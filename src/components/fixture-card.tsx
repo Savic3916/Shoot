@@ -1,5 +1,6 @@
 import { StyleSheet, Text, View } from 'react-native';
 
+import { getFixturePrediction, isCurrentOdd } from '@/features/accumulator';
 import type { FootballMatch, PlayerSummary, TeamResult } from '@/features/football-data';
 
 const COLORS = {
@@ -49,15 +50,27 @@ function Form({ results }: { results: TeamResult[] }) {
 }
 
 export function FixtureCard({ fixture, homeForm, awayForm, homePlayers, awayPlayers }: Props) {
+  const prediction = getFixturePrediction(fixture, {
+    [fixture.homeTeamId]: homeForm,
+    [fixture.awayTeamId]: awayForm,
+  }, {
+    [fixture.homeTeamId]: homePlayers,
+    [fixture.awayTeamId]: awayPlayers,
+  });
   const kickoff = new Date(fixture.utcDate);
   const live = ['IN PLAY', 'LIVE', 'PAUSED', 'INPLAY'].includes(fixture.status.toUpperCase());
   const finished = fixture.status.toUpperCase() === 'FINISHED';
   const score = finished || live
     ? `${fixture.homeGoals ?? '–'} : ${fixture.awayGoals ?? '–'}`
     : kickoff.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  const doubleChance = fixture.odds
-    .filter((odd) => odd.market.toLowerCase().includes('double chance'))
-    .slice(0, 4);
+  const freshOdds = fixture.odds.filter(isCurrentOdd);
+  const bestOdds = new Map<string, (typeof freshOdds)[number]>();
+  for (const odd of freshOdds) {
+    const key = `${odd.market}:${odd.selection}`;
+    const current = bestOdds.get(key);
+    if (!current || odd.decimal > current.decimal) bestOdds.set(key, odd);
+  }
+  const displayedOdds = [...bestOdds.values()].slice(0, 6);
 
   return (
     <View style={styles.card}>
@@ -97,18 +110,39 @@ export function FixtureCard({ fixture, homeForm, awayForm, homePlayers, awayPlay
           <Form results={awayForm} />
         </View>
       </View>
-      {doubleChance.length > 0 && (
-        <View style={styles.oddsSection}>
-          <Text style={styles.oddsTitle}>DOUBLE-CHANCE MARKET · LIVE FEED</Text>
-          {doubleChance.map((odd, index) => (
+      <View style={styles.oddsSection}>
+        <Text style={styles.oddsTitle}>FRESH PROVIDER ODDS · BEST SHOWN QUOTE</Text>
+        {prediction ? (
+          <View style={styles.pickCard}>
+            <Text style={styles.pickKicker}>MODEL PICK · DOUBLE CHANCE</Text>
+            <View style={styles.pickRow}>
+              <Text style={styles.pickSelection}>{prediction.selection}</Text>
+              <Text style={styles.pickPrice}>{prediction.decimalOdds.toFixed(2)}</Text>
+            </View>
+            <Text style={styles.pickEvidence}>
+              {Math.round(prediction.estimatedChance * 100)}% rough estimate · {prediction.bookmaker} ·
+              {' '}{prediction.formMatches} recent team results · quote updated{' '}
+              {new Date(prediction.oddsUpdatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            </Text>
+          </View>
+        ) : (
+          <Text style={styles.noPick}>
+            No eligible pick: fresh double-chance prices and at least four recent results per team
+            are required.
+          </Text>
+        )}
+        {displayedOdds.length > 0 ? displayedOdds.map((odd, index) => (
             <View key={`${odd.marketId}-${odd.selection}-${odd.bookmaker}-${index}`} style={styles.oddRow}>
-              <Text style={styles.oddLabel}>{odd.selection}</Text>
+              <Text style={styles.oddLabel} numberOfLines={1}>
+                {odd.market} · {odd.selection}
+              </Text>
               <Text style={styles.bookmaker}>{odd.bookmaker}</Text>
               <Text style={styles.oddPrice}>{odd.decimal.toFixed(2)}</Text>
             </View>
-          ))}
-        </View>
-      )}
+          )) : (
+            <Text style={styles.noPick}>No fresh priced markets supplied for this fixture.</Text>
+          )}
+      </View>
       <View style={styles.availability}>
         <Text style={styles.availabilityText}>
           {fixture.unavailable.length
@@ -170,11 +204,18 @@ const styles = StyleSheet.create({
   playerStatsTitle: { color: COLORS.muted, fontSize: 8, fontWeight: '800', letterSpacing: 0.5, marginBottom: 2 },
   playerStat: { color: '#C1C9C2', fontSize: 9 },
   oddsSection: { borderTopColor: COLORS.line, borderTopWidth: 1, paddingHorizontal: 16, paddingVertical: 11 },
-  oddsTitle: { color: COLORS.muted, fontSize: 8, fontWeight: '800', letterSpacing: 0.8, marginBottom: 6 },
+  oddsTitle: { color: COLORS.muted, fontSize: 8, fontWeight: '800', letterSpacing: 0.8, marginBottom: 8 },
   oddRow: { alignItems: 'center', flexDirection: 'row', gap: 8, paddingVertical: 4 },
-  oddLabel: { color: COLORS.white, flex: 1, fontSize: 10, fontWeight: '600' },
+  oddLabel: { color: COLORS.white, flex: 1, fontSize: 9, fontWeight: '600' },
   bookmaker: { color: COLORS.muted, fontSize: 9 },
   oddPrice: { color: COLORS.green, fontSize: 11, fontWeight: '800', minWidth: 38, textAlign: 'right' },
+  pickCard: { backgroundColor: '#17271B', borderColor: '#43583B', borderRadius: 11, borderWidth: 1, marginBottom: 8, padding: 10 },
+  pickKicker: { color: COLORS.green, fontSize: 8, fontWeight: '900', letterSpacing: 0.8 },
+  pickRow: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', marginTop: 5 },
+  pickSelection: { color: COLORS.white, flex: 1, fontSize: 11, fontWeight: '800' },
+  pickPrice: { color: COLORS.green, fontSize: 15, fontWeight: '900', marginLeft: 8 },
+  pickEvidence: { color: COLORS.muted, fontSize: 8, lineHeight: 13, marginTop: 5 },
+  noPick: { color: COLORS.muted, fontSize: 9, lineHeight: 14, marginBottom: 6 },
   availability: { alignItems: 'center', borderTopColor: COLORS.line, borderTopWidth: 1, flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 10 },
   availabilityText: { color: COLORS.muted, flex: 1, fontSize: 9 },
   lineupState: { color: COLORS.amber, fontSize: 8, fontWeight: '800', letterSpacing: 0.5 },

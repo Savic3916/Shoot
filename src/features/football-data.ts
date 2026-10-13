@@ -51,7 +51,7 @@ export type MatchdayData = {
   fixtures: FootballMatch[];
   form: Record<string, TeamResult[]>;
   players: Record<string, PlayerSummary[]>;
-  source: 'sportmonks' | 'demo';
+  source: 'sportmonks';
   date: string;
 };
 
@@ -139,7 +139,11 @@ export async function getMatchdayData(
   signal?: AbortSignal,
 ): Promise<MatchdayData> {
   const baseUrl = process.env.EXPO_PUBLIC_API_URL?.trim().replace(/\/+$/, '');
-  if (!baseUrl) return makeDemoData(date);
+  if (!baseUrl) {
+    throw new Error(
+      'Live fixtures, odds, and predictions are not configured. Set up the Sportmonks token and API URL as described in the Model tab.',
+    );
+  }
 
   let endpoint: URL;
   try {
@@ -239,29 +243,4 @@ export async function getMatchdayData(
     source: 'sportmonks',
     date,
   };
-}
-
-function makeDemoData(date: string): MatchdayData {
-  const teams = [
-    ['Northbridge FC', 'Harbor Town'],
-    ['Riverside United', 'Kingswell City'],
-    ['Eastvale Athletic', 'Redmont Rovers'],
-  ];
-  const fixtures = teams.map(([homeTeam, awayTeam], index): FootballMatch => ({
-    id: `demo-${index}`,
-    utcDate: `${date}T${15 + index}:00:00.000Z`,
-    status: 'SCHEDULED',
-    competition: 'DEMO LEAGUE',
-    homeTeam,
-    awayTeam,
-    homeTeamId: `home-${index}`,
-    awayTeamId: `away-${index}`,
-    homeGoals: null,
-    awayGoals: null,
-    odds: [],
-    unavailable: [],
-    lineupsPublished: false,
-    expectedPlayers: [],
-  }));
-  return { fixtures, form: {}, players: {}, source: 'demo', date };
 }

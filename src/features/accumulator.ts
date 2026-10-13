@@ -8,6 +8,8 @@ export type AccumulatorLeg = {
   market: string;
   selection: string;
   decimalOdds: number;
+  bookmaker: string;
+  oddsUpdatedAt: string;
   estimatedChance: number;
   bookmakerCount: number;
   formMatches: number;
@@ -33,6 +35,17 @@ function updatedTime(value: string | null) {
     : `${value.replace(' ', 'T')}Z`;
   const time = Date.parse(withTimezone);
   return Number.isFinite(time) ? time : undefined;
+}
+
+export function isCurrentOdd(odd: MarketOdd, now = Date.now()) {
+  const updatedAt = updatedTime(odd.updatedAt);
+  return (
+    updatedAt !== undefined &&
+    now - updatedAt <= MAX_ODDS_AGE_MS &&
+    updatedAt <= now + 5 * 60 * 1000 &&
+    odd.decimal >= 1.01 &&
+    odd.decimal <= 100
+  );
 }
 
 function canonicalSelection(value: string): 'home-draw' | 'draw-away' | 'home-away' | undefined {
@@ -65,16 +78,11 @@ function successfulResult(result: TeamResult, side: 'home' | 'away') {
 
 function marketOdds(odds: MarketOdd[]) {
   const groups = new Map<string, MarketOdd[]>();
+  const now = Date.now();
   for (const odd of odds) {
     const updatedAt = updatedTime(odd.updatedAt);
-    if (
-      updatedAt === undefined ||
-      Date.now() - updatedAt > MAX_ODDS_AGE_MS ||
-      updatedAt > Date.now() + 5 * 60 * 1000
-    ) {
-      continue;
-    }
-    if (!odd.market.toLowerCase().includes('double chance') || odd.decimal < 1.01 || odd.decimal > 100) {
+    if (!isCurrentOdd(odd, now) || !updatedAt) continue;
+    if (!odd.market.toLowerCase().includes('double chance')) {
       continue;
     }
     const selection = canonicalSelection(odd.selection);
@@ -86,7 +94,7 @@ function marketOdds(odds: MarketOdd[]) {
   }
 
   const probabilities = new Map<string, number[]>();
-  const bestPrices = new Map<string, number>();
+  const bestQuotes = new Map<string, MarketOdd>();
   for (const group of groups.values()) {
     const implied = group.map((odd) => ({
       odd,
@@ -112,20 +120,24 @@ function marketOdds(odds: MarketOdd[]) {
         // fair probabilities sum to 2, not 1.
         samples.push(item.probability * 2 / margin);
         probabilities.set(item.selection, samples);
-        const currentBest = bestPrices.get(item.selection) ?? 0;
-        if (item.odd.decimal > currentBest) bestPrices.set(item.selection, item.odd.decimal);
+        const currentBest = bestQuotes.get(item.selection);
+        if (!currentBest || item.odd.decimal > currentBest.decimal) {
+          bestQuotes.set(item.selection, item.odd);
+        }
       }
     }
   }
 
   return (['home-draw', 'draw-away'] as const).flatMap((selection) => {
     const samples = probabilities.get(selection);
-    const price = bestPrices.get(selection);
-    if (!samples?.length || !price) return [];
+    const quote = bestQuotes.get(selection);
+    if (!samples?.length || !quote?.updatedAt) return [];
     return [{
       selection,
       bookmakerProbability: samples.reduce((sum, item) => sum + item, 0) / samples.length,
-      price,
+      price: quote.decimal,
+      bookmaker: quote.bookmaker,
+      updatedAt: quote.updatedAt,
       bookmakerCount: samples.length,
     }];
   });
@@ -180,6 +192,8 @@ function candidateFor(
       market: 'Double chance',
       selection,
       decimalOdds: odd.price,
+      bookmaker: odd.bookmaker,
+      oddsUpdatedAt: odd.updatedAt,
       estimatedChance,
       bookmakerCount: odd.bookmakerCount,
       formMatches: rates.length,
@@ -190,18 +204,27 @@ function candidateFor(
   return candidates.sort((a, b) => b.estimatedChance - a.estimatedChance)[0];
 }
 
+export function getFixturePrediction(
+  fixture: FootballMatch,
+  form: Record<string, TeamResult[]>,
+  players: Record<string, PlayerSummary[]>,
+): AccumulatorLeg | undefined {
+  if (
+    !['NOT STARTED', 'NS', 'SCHEDULED', 'TIMED'].includes(fixture.status.toUpperCase()) ||
+    new Date(fixture.utcDate).getTime() <= Date.now()
+  ) {
+    return undefined;
+  }
+  return candidateFor(fixture, form, players);
+}
+
 export function buildDailyAccumulator(
   fixtures: FootballMatch[],
   form: Record<string, TeamResult[]>,
   players: Record<string, PlayerSummary[]>,
 ): Accumulator | undefined {
   const candidates = fixtures
-    .filter(
-      (fixture) =>
-        ['NOT STARTED', 'NS', 'SCHEDULED', 'TIMED'].includes(fixture.status.toUpperCase()) &&
-        new Date(fixture.utcDate).getTime() > Date.now(),
-    )
-    .map((fixture) => candidateFor(fixture, form, players))
+    .map((fixture) => getFixturePrediction(fixture, form, players))
     .filter((leg): leg is AccumulatorLeg => Boolean(leg))
     .sort((a, b) => b.estimatedChance - a.estimatedChance);
 

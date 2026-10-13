@@ -2,13 +2,13 @@
 
 Sideline is an Expo / React Native football matchday app. It shows fixtures available in your provider subscription for today or tomorrow, recent completed scores, reported unavailable players, posted lineups, and current bookmaker odds when licensed access is available.
 
-The app builds **at most one** daily accumulator from double-chance markets, with a combined decimal price capped at 5.00. It requires at least four recent results per team, available odds, and at least two different fixtures. It will show no accumulator rather than invent a pick when the data checks fail.
+The app shows at most one eligible double-chance pick per fixture, including the decimal price and bookmaker, and builds **at most one** daily accumulator from eligible picks with a combined decimal price capped at 5.00. It requires at least four recent results per team, fresh available odds, and at least two different fixtures for an accumulator. It will show no pick rather than invent one when the data checks fail.
 
 **No accumulator is safe or certain.** The price cap is not a probability. A multi-match accumulator loses if any leg loses, and adding legs increases the ways it can fail. The displayed probability is an unvalidated historical-rate estimate; it has not been back-tested or calibrated. It is for information only, not betting advice.
 
-## Run in demo mode
+## Run the app
 
-Install dependencies with `npm install` and start the Expo app with `npx expo start`. Without `EXPO_PUBLIC_API_URL`, demo mode shows fictional fixtures without odds or an accumulator.
+Install dependencies with `npm install`. Configure the live provider below, then start the data server with `npm run server` and the Expo app with `npx expo start`. Without a configured provider URL, the app displays a setup error instead of fictional fixtures.
 
 ## Connect Sportmonks
 
@@ -23,11 +23,12 @@ Setup:
 
 1. Create a Sportmonks account and verify which plan covers your target leagues, odds, and request volume. Provider pages list base plans starting at €29/month and the pre-match odds add-on at €14–€69 depending on plan (checked October 2026); prices and entitlements can change.
 2. Create an API token. Copy `.env.example` to `.env` and set `SPORTMONKS_API_TOKEN`.
-3. Start the local data server: `npm run server`.
-4. In another terminal start Expo: `npx expo start`.
-5. On a physical device, set `EXPO_PUBLIC_API_URL` in `.env` to your computer's private LAN address, such as `http://192.168.1.20:4000`, and restart Expo. Do not commit `.env`.
+3. Confirm your Sportmonks plan includes the competitions you need, including UEFA Champions League, and the Odds add-on covers your chosen bookmakers and markets. The API cannot return fixtures or odds outside your account entitlements.
+4. Start the local data server: `npm run server`.
+5. In another terminal start Expo: `npx expo start`.
+6. On a physical device, set `EXPO_PUBLIC_API_URL` in `.env` to your computer's private LAN address, such as `http://192.168.1.20:4000`, and restart Expo. Do not commit `.env`.
 
-The server keeps the provider token off-device and fetches fixtures with scores, odds, sidelined reports, official lineups, and optional expected lineups. For up to 30 fixtures with double-chance odds, it requests each team's latest eight completed matches from the preceding 90 days, including player goals, assists, minutes, and ratings where the feed includes them. Responses are cached in memory for three minutes (fixture data) and 30 minutes (team form). A provider subscription's call limits apply.
+The server keeps the provider token off-device and fetches all paginated fixtures returned for the selected local date, with scores, odds, sidelined reports, official lineups, and optional expected lineups. For up to 30 fixtures with double-chance odds, it requests each team's latest eight completed matches from the preceding 90 days, including player goals, assists, minutes, and ratings where the feed includes them. Responses are cached in memory for three minutes (fixture data) and 30 minutes (team form). A provider subscription's call limits apply.
 
 The server is for local development only. It has permissive CORS and in-memory rate limiting. Do not expose it publicly without deployment-grade authentication, rate limiting, monitoring, HTTPS, and provider-key management.
 

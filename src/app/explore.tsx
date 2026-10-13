@@ -18,8 +18,9 @@ export default function ModelScreen() {
         <Text style={styles.kicker}>HOW THE SHORTLIST WORKS</Text>
         <Text style={styles.title}>Evidence in.{'\n'}Certainty out? Never.</Text>
         <Text style={styles.intro}>
-          Sideline builds at most one daily accumulator from available licensed match data. It does
-          not force a pick when the checks are not met.
+          Sideline shows a single eligible pick and fresh odds on each match card, then builds at
+          most one daily accumulator from the strongest eligible picks. It never invents missing
+          fixtures, prices, or recommendations.
         </Text>
 
         <View style={styles.warning}>
@@ -35,9 +36,10 @@ export default function ModelScreen() {
           <View style={styles.copy}>
             <Text style={styles.stepTitle}>Compare worldwide fixtures and prices</Text>
             <Text style={styles.detail}>
-              The app requests all fixtures in the selected local date that are covered by your
-              Sportmonks plan. Current bookmaker double-chance prices are grouped and de-vigged
-              within the available market quotes.
+              The app requests every fixture returned for the selected local date in your
+              Sportmonks account coverage. Fixtures outside your enabled leagues cannot appear;
+              enable UEFA Champions League coverage in your provider plan if those games are
+              missing. Each card shows the best fresh prices supplied by the feed.
             </Text>
           </View>
         </View>
@@ -47,8 +49,8 @@ export default function ModelScreen() {
             <Text style={styles.stepTitle}>Check recent completed scores</Text>
             <Text style={styles.detail}>
               For fixtures with usable prices, the data server loads each team’s latest completed
-              matches from the prior 90 days. The short-list requires at least four results for
-              each team and weights observed form alongside market-implied probability.
+              matches from the prior 90 days. A card’s single model pick requires at least four
+              recent results per team and weights observed form alongside de-vigged market odds.
               It requires bookmaker timestamps no older than six hours and skips a fixture when
               an unavailable player has a tracked recent goal or assist.
             </Text>
@@ -76,9 +78,11 @@ export default function ModelScreen() {
             plan when researched); confirm the plan’s bookmaker and
             market coverage before purchase.{'\n'}
             3. Create a token, copy .env.example to .env, and set SPORTMONKS_API_TOKEN.{'\n'}
-            4. Expected lineups need the provider’s Expected Lineups add-on; only then set
+            4. In Sportmonks, confirm your enabled competition list includes the UEFA Champions
+            League if you expect its fixtures to appear.{'\n'}
+            5. Expected lineups need the provider’s Expected Lineups add-on; only then set
             SPORTMONKS_EXPECTED_LINEUPS=true.{'\n'}
-            5. Start the data server with npm run server. Start Expo separately with npx expo start.
+            6. Start the data server with npm run server. Start Expo separately with npx expo start.
             On a phone, set EXPO_PUBLIC_API_URL to your computer’s LAN address.
           </Text>
           <Text style={styles.securityNote}>
@@ -106,8 +110,8 @@ export default function ModelScreen() {
           provider feed instead.
         </Text>
         <Text style={styles.footer}>
-          Demo mode uses fictional clubs and no odds. It will never present sample data as today’s
-          real pick.
+          No provider token is bundled with this app. Without a configured live feed, the app now
+          explains the setup requirement instead of presenting fictional matches as real fixtures.
         </Text>
       </ScrollView>
     </SafeAreaView>

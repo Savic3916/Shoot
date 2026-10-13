@@ -71,7 +71,7 @@ function AccumulatorCard({ data }: { data: MatchdayData }) {
                   {leg.selection} · {leg.competition}
                 </Text>
                 <Text style={styles.legEvidence}>
-                  {leg.formMatches} recent results · {leg.bookmakerCount} market prices ·{' '}
+                  {leg.formMatches} recent results · quote from {leg.bookmaker} ·{' '}
                   {leg.lineupsPublished ? 'lineups posted' : 'lineups pending'}
                 </Text>
                 {leg.unavailableCount > 0 && (
@@ -99,12 +99,11 @@ function AccumulatorCard({ data }: { data: MatchdayData }) {
       ) : (
         <View style={styles.noPick}>
           <Text style={styles.noPickTitle}>
-            {data.source === 'demo' ? 'Live feed not connected' : 'No accumulator passed the checks'}
+            No accumulator passed the checks
           </Text>
           <Text style={styles.noPickCopy}>
-            {data.source === 'demo'
-              ? 'Add a Sportmonks token and an odds add-on with the required league coverage. Demo matches are fictional.'
-              : 'No selection is shown when current double-chance prices or enough recent scores are missing. We do not force a bet to reach the 5.00 cap.'}
+            No selection is shown when current double-chance prices or enough recent scores are
+            missing. We do not force a bet to reach the 5.00 cap.
           </Text>
         </View>
       )}
@@ -140,9 +139,9 @@ function ListHeader({
           <Text style={styles.brandSub}>GLOBAL MATCHDAY</Text>
         </View>
         <View style={styles.liveBadge}>
-          <View style={[styles.liveDot, data?.source === 'demo' && styles.demoDot]} />
+          <View style={styles.liveDot} />
           <Text style={styles.liveLabel}>
-            {data?.source === 'sportmonks' ? 'LIVE FEED' : 'DEMO MODE'}
+            {data ? 'LIVE FEED' : 'CONNECT FEED'}
           </Text>
         </View>
       </View>
@@ -151,7 +150,8 @@ function ListHeader({
         <Text style={styles.kicker}>THE MATCHDAY BRIEF</Text>
         <Text style={styles.title}>One slip.{'\n'}No guarantees.</Text>
         <Text style={styles.heroCopy}>
-          Today’s fixtures across your provider coverage, with form, prices and player availability.
+          Today’s fixtures and fresh prices from the competitions enabled in your provider account,
+          with recent form and player availability.
         </Text>
         <View style={styles.heroMeta}>
           <View style={styles.metaDot} />
@@ -248,10 +248,15 @@ export default function MatchesScreen() {
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       {error ? (
         <View style={styles.errorWrap}>
-          <Text style={styles.errorTitle}>Couldn’t load matchday data</Text>
+          <Text style={styles.errorTitle}>Live data unavailable</Text>
           <Text style={styles.errorText}>{error}</Text>
+          <Text style={styles.errorText}>
+            The app needs a working Sportmonks token, an Odds add-on, and league coverage that
+            includes the competitions you want (such as the UEFA Champions League). Check the
+            Model tab setup, then restart the app and data server.
+          </Text>
           <Pressable style={styles.retryButton} onPress={() => setRefreshKey((key) => key + 1)}>
-            <Text style={styles.retryText}>Try again</Text>
+            <Text style={styles.retryText}>Retry live feed</Text>
           </Pressable>
         </View>
       ) : loading && !data ? (
@@ -298,20 +303,15 @@ export default function MatchesScreen() {
             <View style={styles.emptyState}>
               <Text style={styles.emptyTitle}>No fixtures for this date</Text>
               <Text style={styles.emptyCopy}>
-                Fixture availability depends on your Sportmonks subscription and league coverage.
+                No fixtures were returned for this local date. Check your Sportmonks league
+                coverage and timezone; the feed cannot include competitions your plan does not cover.
               </Text>
             </View>
           }
           ListFooterComponent={
-            data?.source === 'demo' ? (
-              <Text style={styles.demoNotice}>
-                SAMPLE DATA · Fictional fixtures only. Connect a Sportmonks token for live data.
-              </Text>
-            ) : (
-              <Text style={styles.footerNote}>
-                Source: Sportmonks feed · coverage and odds depend on your plan
-              </Text>
-            )
+            <Text style={styles.footerNote}>
+              Source: Sportmonks · fixtures and prices depend on your subscription coverage
+            </Text>
           }
         />
       )}
@@ -330,7 +330,6 @@ const styles = StyleSheet.create({
   brandSub: { color: COLORS.muted, fontSize: 8, fontWeight: '800', letterSpacing: 1.3, marginTop: 3 },
   liveBadge: { alignItems: 'center', borderColor: COLORS.border, borderRadius: 20, borderWidth: 1, flexDirection: 'row', gap: 6, marginLeft: 'auto', paddingHorizontal: 10, paddingVertical: 7 },
   liveDot: { backgroundColor: COLORS.green, borderRadius: 4, height: 6, width: 6 },
-  demoDot: { backgroundColor: COLORS.amber },
   liveLabel: { color: COLORS.muted, fontSize: 8, fontWeight: '800', letterSpacing: 0.8 },
   hero: { paddingBottom: 19, paddingTop: 34 },
   kicker: { color: COLORS.green, fontSize: 10, fontWeight: '900', letterSpacing: 2 },
@@ -386,6 +385,5 @@ const styles = StyleSheet.create({
   emptyState: { alignItems: 'center', backgroundColor: COLORS.panel, borderColor: COLORS.border, borderRadius: 18, borderWidth: 1, padding: 20 },
   emptyTitle: { color: COLORS.text, fontSize: 13, fontWeight: '800' },
   emptyCopy: { color: COLORS.muted, fontSize: 10, lineHeight: 15, marginTop: 6, textAlign: 'center' },
-  demoNotice: { color: COLORS.amber, fontSize: 9, lineHeight: 14, paddingBottom: 15, paddingTop: 5, textAlign: 'center' },
   footerNote: { color: COLORS.muted, fontSize: 9, paddingBottom: 15, paddingTop: 5, textAlign: 'center' },
 });
