@@ -35,8 +35,9 @@ export type FootballMatch = {
 export type TeamResult = {
   utcDate: string;
   opponent: string;
-  goalsFor: number;
-  goalsAgainst: number;
+  goalsFor: number | null;
+  goalsAgainst: number | null;
+  outcome?: 'W' | 'D' | 'L';
 };
 
 export type PlayerSummary = {
@@ -53,8 +54,9 @@ export type MatchdayData = {
   fixtures: FootballMatch[];
   form: Record<string, TeamResult[]>;
   players: Record<string, PlayerSummary[]>;
-  source: 'sportmonks';
+  source: 'espn';
   date: string;
+  coverageWarnings: string[];
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -174,7 +176,7 @@ export async function getMatchdayData(
   } catch (error) {
     if (signal?.aborted) throw error;
     throw new Error(
-      `Cannot reach the Sideline data server at ${endpoint.origin}. Start it in a separate terminal with npm run server, and check that .env contains a valid Sportmonks token.`,
+      `Cannot reach the free football data server at ${endpoint.origin}. Start the app with npm start so it launches the match feed and Expo together.`,
       { cause: error },
     );
   }
@@ -188,11 +190,13 @@ export async function getMatchdayData(
   }
   if (
     !isRecord(payload) ||
-    payload.source !== 'sportmonks' ||
+    payload.source !== 'espn' ||
     payload.date !== date ||
     !Array.isArray(payload.fixtures) ||
     !isRecord(payload.form) ||
-    !isRecord(payload.players)
+    !isRecord(payload.players) ||
+    !Array.isArray(payload.coverageWarnings) ||
+    !payload.coverageWarnings.every((warning) => typeof warning === 'string')
   ) {
     throw new Error('The match service returned an invalid response.');
   }
@@ -206,8 +210,9 @@ export async function getMatchdayData(
         !isRecord(result) ||
         typeof result.utcDate !== 'string' ||
         typeof result.opponent !== 'string' ||
-        typeof result.goalsFor !== 'number' ||
-        typeof result.goalsAgainst !== 'number'
+        (result.goalsFor !== null && typeof result.goalsFor !== 'number') ||
+        (result.goalsAgainst !== null && typeof result.goalsAgainst !== 'number') ||
+        (result.outcome !== 'W' && result.outcome !== 'D' && result.outcome !== 'L')
       ) {
         throw new Error('The match service returned an invalid past result.');
       }
@@ -216,6 +221,7 @@ export async function getMatchdayData(
         opponent: result.opponent,
         goalsFor: result.goalsFor,
         goalsAgainst: result.goalsAgainst,
+        outcome: result.outcome,
       };
     });
   }
@@ -252,7 +258,8 @@ export async function getMatchdayData(
     fixtures: payload.fixtures.map(parseMatch),
     form,
     players,
-    source: 'sportmonks',
+    source: 'espn',
     date,
+    coverageWarnings: payload.coverageWarnings,
   };
 }

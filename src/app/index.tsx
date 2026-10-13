@@ -50,10 +50,10 @@ function AccumulatorCard({ data }: { data: MatchdayData }) {
         </View>
         <Text style={styles.oddsCap}>MAX 5.00</Text>
       </View>
-      <Text style={styles.accaTitle}>Matchday shortlist</Text>
+      <Text style={styles.accaTitle}>Form-based shortlist</Text>
       <Text style={styles.accaDescription}>
-        Double-chance markets with fresh odds and recent team scores. The selection is limited to
-        games with enough available data.
+        Double-chance estimates derived from the free feed’s recent W/D/L form. These are not
+        bookmaker prices or calibrated probabilities.
       </Text>
 
       {accumulator ? (
@@ -71,8 +71,7 @@ function AccumulatorCard({ data }: { data: MatchdayData }) {
                   {leg.selection} · {leg.competition}
                 </Text>
                 <Text style={styles.legEvidence}>
-                  {leg.formMatches} recent results · quote from {leg.bookmaker} ·{' '}
-                  {leg.lineupsPublished ? 'lineups posted' : 'lineups pending'}
+                  {leg.formMatches} recent W/D/L results · model-only price estimate
                 </Text>
                 {leg.unavailableCount > 0 && (
                   <Text style={styles.legWarning}>
@@ -85,14 +84,14 @@ function AccumulatorCard({ data }: { data: MatchdayData }) {
           ))}
           <View style={styles.combined}>
             <View>
-              <Text style={styles.combinedCaption}>COMBINED DECIMAL PRICE</Text>
-              <Text style={styles.combinedSub}>Prices can move before kick-off</Text>
+              <Text style={styles.combinedCaption}>COMBINED MODEL PRICE ESTIMATE</Text>
+              <Text style={styles.combinedSub}>Not a bookmaker quote</Text>
             </View>
             <Text style={styles.combinedPrice}>{accumulator.combinedOdds.toFixed(2)}</Text>
           </View>
           <Text style={styles.chanceNote}>
-            Historical-rate estimate: {Math.round(accumulator.estimatedChance * 100)}% if each leg
-            were independent. This is not a calibrated forecast, and accumulator outcomes are not
+            Uncalibrated form estimate: {Math.round(accumulator.estimatedChance * 100)}% if each leg
+            were independent. This is not a bookmaker implied probability, and outcomes are not
             guaranteed.
           </Text>
         </>
@@ -102,8 +101,8 @@ function AccumulatorCard({ data }: { data: MatchdayData }) {
             No accumulator passed the checks
           </Text>
           <Text style={styles.noPickCopy}>
-            No selection is shown when current double-chance prices or enough recent scores are
-            missing. We do not force a bet to reach the 5.00 cap.
+            At least two fixtures need enough recent form to qualify. We do not invent a pick when
+            the free feed lacks the required results.
           </Text>
         </View>
       )}
@@ -136,12 +135,12 @@ function ListHeader({
         <View style={styles.brandMark}><Text style={styles.brandIcon}>S</Text></View>
         <View style={styles.brandWords}>
           <Text style={styles.brand}>SIDELINE</Text>
-          <Text style={styles.brandSub}>GLOBAL MATCHDAY</Text>
+          <Text style={styles.brandSub}>MAJOR COMPETITIONS</Text>
         </View>
         <View style={styles.liveBadge}>
           <View style={styles.liveDot} />
           <Text style={styles.liveLabel}>
-            {data ? 'LIVE FEED' : 'CONNECT FEED'}
+            {data ? 'FREE SCORE FEED' : 'LOADING FEED'}
           </Text>
         </View>
       </View>
@@ -150,8 +149,8 @@ function ListHeader({
         <Text style={styles.kicker}>THE MATCHDAY BRIEF</Text>
         <Text style={styles.title}>One slip.{'\n'}No guarantees.</Text>
         <Text style={styles.heroCopy}>
-          Today’s fixtures and fresh prices from the competitions enabled in your provider account,
-          with recent form and player availability.
+          Fixtures and scores from the free match feed, with recent team form where available.
+          Bookmaker odds and lineup information are not included.
         </Text>
         <View style={styles.heroMeta}>
           <View style={styles.metaDot} />
@@ -176,12 +175,18 @@ function ListHeader({
         ))}
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Refresh fixtures and odds"
+          accessibilityLabel="Refresh fixtures and scores"
           onPress={onRefresh}
           style={styles.refreshButton}>
           {loading ? <ActivityIndicator size="small" color={COLORS.green} /> : <Text style={styles.refreshText}>↻</Text>}
         </Pressable>
       </View>
+
+      {data?.coverageWarnings.length ? (
+        <Text style={styles.coverageWarning}>
+          Some competitions could not load: {data.coverageWarnings.slice(0, 3).join(' · ')}
+        </Text>
+      ) : null}
 
       {data && <AccumulatorCard data={data} />}
 
@@ -189,7 +194,7 @@ function ListHeader({
         <View>
           <Text style={styles.sectionTitle}>All matches</Text>
           <Text style={styles.sectionSubtitle}>
-            {loading ? 'Refreshing provider coverage…' : `${data?.fixtures.length ?? 0} fixtures available`}
+            {loading ? 'Refreshing free score feed…' : `${data?.fixtures.length ?? 0} fixtures available`}
           </Text>
         </View>
       </View>
@@ -248,13 +253,13 @@ export default function MatchesScreen() {
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       {error ? (
         <View style={styles.errorWrap}>
-          <Text style={styles.errorTitle}>Live data unavailable</Text>
+          <Text style={styles.errorTitle}>Free match feed unavailable</Text>
           <Text style={styles.errorText}>{error}</Text>
           <Text style={styles.errorText}>
-            For web, run Copy-Item .env.example .env in PowerShell, add your Sportmonks token to
-            .env, start npm run server in a separate terminal, then restart Expo. For a phone, also
-            set EXPO_PUBLIC_API_URL to your computer’s LAN address. Your Sportmonks plan must
-            include the required leagues (such as UEFA Champions League) and Odds add-on.
+            Start the app with npm start; it launches the free match feed server and Expo together.
+            On a phone, set EXPO_PUBLIC_API_URL in .env to your computer’s LAN address before
+            starting. This source has no paid account or token, but does not provide bookmaker
+            odds, player availability, or confirmed lineups.
           </Text>
           <Pressable style={styles.retryButton} onPress={() => setRefreshKey((key) => key + 1)}>
             <Text style={styles.retryText}>Retry live feed</Text>
@@ -304,14 +309,14 @@ export default function MatchesScreen() {
             <View style={styles.emptyState}>
               <Text style={styles.emptyTitle}>No fixtures for this date</Text>
               <Text style={styles.emptyCopy}>
-                No fixtures were returned for this local date. Check your Sportmonks league
-                coverage and timezone; the feed cannot include competitions your plan does not cover.
+                No fixtures were returned for this local date. The free feed covers selected major
+                leagues and cups, not every competition worldwide.
               </Text>
             </View>
           }
           ListFooterComponent={
             <Text style={styles.footerNote}>
-              Source: Sportmonks · fixtures and prices depend on your subscription coverage
+              Free ESPN score feed · selected competitions · no bookmaker odds
             </Text>
           }
         />
@@ -387,4 +392,5 @@ const styles = StyleSheet.create({
   emptyTitle: { color: COLORS.text, fontSize: 13, fontWeight: '800' },
   emptyCopy: { color: COLORS.muted, fontSize: 10, lineHeight: 15, marginTop: 6, textAlign: 'center' },
   footerNote: { color: COLORS.muted, fontSize: 9, paddingBottom: 15, paddingTop: 5, textAlign: 'center' },
+  coverageWarning: { color: COLORS.amber, fontSize: 9, lineHeight: 14, marginBottom: 12 },
 });

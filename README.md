@@ -1,55 +1,45 @@
 # Sideline
 
-Sideline is an Expo / React Native football matchday app. It shows fixtures available in your provider subscription for today or tomorrow, recent completed scores, reported unavailable players, posted lineups, and current bookmaker odds when licensed access is available.
+Sideline is an Expo / React Native matchday app. It loads fixtures and scores from a free public ESPN soccer scoreboard feed, including UEFA Champions League and a curated set of other major competitions. It needs no paid subscription, account, API token, or `.env` file to run on web.
 
-The app shows at most one eligible double-chance pick per fixture, including the decimal price and bookmaker, and builds **at most one** daily accumulator from eligible picks with a combined decimal price capped at 5.00. It requires at least four recent results per team, fresh available odds, and at least two different fixtures for an accumulator. It will show no pick rather than invent one when the data checks fail.
+The scoreboard feed provides some teams' recent W/D/L form. Where at least four results per side are available, Sideline can show one form-based double-chance estimate per match and build at most one daily shortlist with a combined **model-implied** decimal price capped at 5.00.
 
-**No accumulator is safe or certain.** The price cap is not a probability. A multi-match accumulator loses if any leg loses, and adding legs increases the ways it can fail. The displayed probability is an unvalidated historical-rate estimate; it has not been back-tested or calibrated. It is for information only, not betting advice.
+**These are not bookmaker odds.** The public feed does not supply bookmaker prices, confirmed lineups, player availability, or complete team-history data. The displayed decimal is calculated as the inverse of an uncalibrated form estimate. It is not a verified probability, a betting tip, or a guarantee. The feed is unofficial and can change without notice; coverage is selected leagues, not every match worldwide.
 
 ## Run the app
 
-Install dependencies with `npm install`. Configure the live provider below, then start the data server with `npm run server` and the Expo app with `npx expo start`. Without a configured provider URL, the app displays a setup error instead of fictional fixtures.
+1. Install dependencies with `npm install`.
+2. Run `npm start` in the project directory.
+3. Open the web URL shown by Expo (usually `http://localhost:8081`).
 
-## Connect Sportmonks
+The start command launches both the local data server and Expo. There is no paid provider or credential setup.
 
-Sportmonks documents fixture-by-date requests, pre-match odds, lineups, player availability, and team-specific previous fixtures. Availability varies by subscription:
+For a physical phone, set `EXPO_PUBLIC_API_URL` in a local `.env` to your computer's LAN address, for example `http://192.168.1.20:4000`, and restart Expo. The phone and computer must be on the same network.
 
-- League and fixture coverage is limited to your selected base plan. “All matches” means all fixtures the provider returns for your subscription, not every football match in the world.
-- The provider's pre-match **Odds add-on is required** for prices. Confirm the selected plan includes the leagues, bookmakers, and markets you need before purchase.
-- Injury/suspension (`sidelined`) and official lineup data are documented in the base plans. Official lineups are generally published near kick-off.
-- Expected lineups need Sportmonks' separate Expected Lineups add-on. To request them, set `SPORTMONKS_EXPECTED_LINEUPS=true` after enabling that add-on in your account.
+The data server can also be run by itself using `npm run server`; its `/health` endpoint reports the active free feed. It requests scoreboards for the selected competitions in `server/index.mjs` concurrently and caches each date for two minutes.
 
-Setup:
+## Competition coverage
 
-1. Create a Sportmonks account and verify which plan covers your target leagues, odds, and request volume. Provider pages list base plans starting at €29/month and the pre-match odds add-on at €14–€69 depending on plan (checked October 2026); prices and entitlements can change.
-2. Create an API token. In PowerShell, run `Copy-Item .env.example .env`, then open `.env` and replace the `SPORTMONKS_API_TOKEN` placeholder with your token. Never paste the token into chat or commit `.env`.
-3. Confirm your Sportmonks plan includes the competitions you need, including UEFA Champions League, and the Odds add-on covers your chosen bookmakers and markets. The API cannot return fixtures or odds outside your account entitlements.
-4. Start the local data server in one terminal: `npm run server`. Its `/health` endpoint should report `"configured":true`.
-5. In another terminal start Expo: `npx expo start`. Expo web uses `http://localhost:4000` by default in development.
-6. For a physical phone, set `EXPO_PUBLIC_API_URL` in `.env` to your computer's private LAN address, such as `http://192.168.1.20:4000`, and restart Expo. Do not commit `.env`.
+The feed checks the UEFA Champions League, Europa League and Conference League; major English, Spanish, German, Italian and French leagues and cups; selected European domestic leagues; and selected competitions in the Americas, Asia and Australia. Coverage depends on what the public feed returns for a competition and date. A missing fixture can mean that competition/date is not covered by the feed; Sideline cannot guarantee a complete worldwide fixture list.
 
-The server keeps the provider token off-device and fetches all paginated fixtures returned for the selected local date, with scores, odds, sidelined reports, official lineups, and optional expected lineups. For up to 30 fixtures with double-chance odds, it requests each team's latest eight completed matches from the preceding 90 days, including player goals, assists, minutes, and ratings where the feed includes them. Responses are cached in memory for three minutes (fixture data) and 30 minutes (team form). A provider subscription's call limits apply.
+## Model limitations
 
-The server is for local development only. It has permissive CORS and in-memory rate limiting. Do not expose it publicly without deployment-grade authentication, rate limiting, monitoring, HTTPS, and provider-key management.
+The form estimate uses recent W/D/L outcomes, with a small smoothing prior. It does not use historical goal scores, head-to-head results, player statistics, lineup news, injuries, bookmaker prices, or trained/calibrated model weights. Matches without sufficient form do not receive a pick. Combined estimates multiply the selected leg estimates and assume independence, which is not assured.
 
-## Shortlist method
+No bet is safe or certain. This app is for informational and development purposes only, not betting advice.
 
-The server normalizes provider data. The app groups double-chance prices by market/bookmaker, estimates fair implied chances from all three overlapping selections (home/draw, draw/away, and home/away), and averages those probabilities. Odds with missing timestamps or older than six hours are excluded from the accumulator. Each selection's baseline is blended with a smoothed rate from each team's most recent completed results. The shortlist uses a 70% bookmaker / 30% form blend, requires at least a 68% rough estimated chance, allows individual prices up to 1.90, and adds distinct matches in descending estimate order while the accumulator stays at or below 5.00. A minimum of two legs is required. It skips a fixture when a reported unavailable player has a tracked goal or assist in recent appearances.
+## Data source
 
-This is an explainable prototype, **not a validated prediction model**. The combined chance display multiplies leg estimates and assumes independence; real match outcomes and markets are not guaranteed to be independent. The app does not yet quantify player-season statistics, assess the impact of absences, account for changing lineups/odds, or back-test against historical seasons. Absence and lineup information is shown as context only, not converted to a guessed adjustment. Validate calibration against held-out data before relying on any estimate.
+The development server uses ESPN's publicly reachable soccer scoreboard JSON endpoints, for example:
 
-## Why no Flashscore scraping?
+- `https://site.api.espn.com/apis/site/v2/sports/soccer/uefa.champions/scoreboard?dates=YYYYMMDD`
+- `https://site.api.espn.com/apis/site/v2/sports/soccer/eng.1/scoreboard?dates=YYYYMMDD`
 
-Flashscore's terms restrict copying or extracting substantial database content without permission. Sideline uses a licensed feed instead; review your provider's current terms before commercial use.
+These endpoints are not a guaranteed public developer API. Sideline does not scrape Flashscore or copy protected site databases. Check the source provider's current terms before distributing or commercializing an app using its feed.
 
-## Research references
+## References
 
-- [Sportmonks Football API](https://www.sportmonks.com/football-api/)
-- [Sportmonks fixture-by-date endpoint](https://docs.sportmonks.com/v3/endpoints-and-entities/endpoints/fixtures/get-fixtures-by-date.md)
-- [Sportmonks pre-match odds (Odds add-on required)](https://docs.sportmonks.com/v3/tutorials-and-guides/tutorials/odds-and-predictions/pre-match-odds.md)
-- [Sportmonks sideline availability](https://docs.sportmonks.com/v3/tutorials-and-guides/tutorials/includes/sidelined.md)
-- [Sportmonks lineups](https://docs.sportmonks.com/v3/tutorials-and-guides/tutorials/lineups-and-formations.md)
-- [Sportmonks team-specific fixture history](https://docs.sportmonks.com/v3/endpoints-and-entities/endpoints/fixtures/get-fixtures-by-date-range-for-team.md)
-- [Sportmonks pricing](https://www.sportmonks.com/football-api/plans-pricing/)
-- [Flashscore terms of use](https://www.flashscore.com/terms-of-use/)
+- [ESPN UEFA Champions League scoreboard feed](https://site.api.espn.com/apis/site/v2/sports/soccer/uefa.champions/scoreboard)
+- [ESPN English Premier League scoreboard feed](https://site.api.espn.com/apis/site/v2/sports/soccer/eng.1/scoreboard)
 - [Expo SDK 57 documentation](https://docs.expo.dev/versions/v57.0.0/)
+- [Flashscore terms of use](https://www.flashscore.com/terms-of-use/)

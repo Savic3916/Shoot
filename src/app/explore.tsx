@@ -18,9 +18,8 @@ export default function ModelScreen() {
         <Text style={styles.kicker}>HOW THE SHORTLIST WORKS</Text>
         <Text style={styles.title}>Evidence in.{'\n'}Certainty out? Never.</Text>
         <Text style={styles.intro}>
-          Sideline shows a single eligible pick and fresh odds on each match card, then builds at
-          most one daily accumulator from the strongest eligible picks. It never invents missing
-          fixtures, prices, or recommendations.
+          Sideline uses a free public score feed. No paid sports-data subscription or API token is
+          needed. Match cards show an uncalibrated form estimate, not a bookmaker price.
         </Text>
 
         <View style={styles.warning}>
@@ -34,12 +33,11 @@ export default function ModelScreen() {
         <View style={styles.step}>
           <Text style={styles.number}>01</Text>
           <View style={styles.copy}>
-            <Text style={styles.stepTitle}>Compare worldwide fixtures and prices</Text>
+            <Text style={styles.stepTitle}>Load selected competitions for free</Text>
             <Text style={styles.detail}>
-              The app requests every fixture returned for the selected local date in your
-              Sportmonks account coverage. Fixtures outside your enabled leagues cannot appear;
-              enable UEFA Champions League coverage in your provider plan if those games are
-              missing. Each card shows the best fresh prices supplied by the feed.
+              The app checks a list of major leagues and cups, including the UEFA Champions League.
+              Coverage depends on the public feed and is not every match worldwide. The feed has
+              fixtures and scores, but does not provide live bookmaker odds.
             </Text>
           </View>
         </View>
@@ -48,11 +46,9 @@ export default function ModelScreen() {
           <View style={styles.copy}>
             <Text style={styles.stepTitle}>Check recent completed scores</Text>
             <Text style={styles.detail}>
-              For fixtures with usable prices, the data server loads each team’s latest completed
-              matches from the prior 90 days. A card’s single model pick requires at least four
-              recent results per team and weights observed form alongside de-vigged market odds.
-              It requires bookmaker timestamps no older than six hours and skips a fixture when
-              an unavailable player has a tracked recent goal or assist.
+              For matches where the scoreboard includes recent W/D/L form, the app calculates
+              double-chance estimates. The displayed decimal is the inverse of that uncalibrated
+              estimate; it is not an available bookmaker quote or a promise of success.
             </Text>
           </View>
         </View>
@@ -61,43 +57,30 @@ export default function ModelScreen() {
           <View style={styles.copy}>
             <Text style={styles.stepTitle}>Show availability honestly</Text>
             <Text style={styles.detail}>
-              Reported injuries or suspensions and official lineups are displayed when supplied by
-              the feed. An empty absence report does not mean every player is fit. Expected XIs are
-              optional and require the matching provider add-on.
+              This free feed does not provide reliable injuries, suspensions, player availability,
+              or confirmed lineups. Those are explicitly marked unavailable rather than guessed.
             </Text>
           </View>
         </View>
 
         <View style={styles.setupCard}>
-          <Text style={styles.setupKicker}>CONNECT YOUR DATA FEED</Text>
-          <Text style={styles.setupTitle}>Sportmonks account required</Text>
+          <Text style={styles.setupKicker}>FREE DATA FEED</Text>
+          <Text style={styles.setupTitle}>No subscription or token needed</Text>
           <Text style={styles.setupText}>
-            1. Choose a Sportmonks plan whose league coverage matches your needs. Their fixtures
-            include leagues only within your subscription.{'\n'}
-            2. Pre-match prices need the separate Odds add-on (listed at €14–€69 depending on base
-            plan when researched); confirm the plan’s bookmaker and
-            market coverage before purchase.{'\n'}
-            3. Create a token, copy .env.example to .env, and set SPORTMONKS_API_TOKEN.{'\n'}
-            4. In Sportmonks, confirm your enabled competition list includes the UEFA Champions
-            League if you expect its fixtures to appear.{'\n'}
-            5. Expected lineups need the provider’s Expected Lineups add-on; only then set
-            SPORTMONKS_EXPECTED_LINEUPS=true.{'\n'}
-            6. Start the data server with npm run server. Start Expo separately with npx expo start.
-            On a phone, set EXPO_PUBLIC_API_URL to your computer’s LAN address.
+            Run npm start from the project folder. This starts the local free-feed server and Expo
+            together. In the browser, open the local URL shown by Expo. For a physical phone, set
+            EXPO_PUBLIC_API_URL in .env to your computer’s LAN IP and restart.
           </Text>
           <Text style={styles.securityNote}>
-            Keep the provider token in the server’s .env, not in an EXPO_PUBLIC variable or the
-            mobile app bundle. The included server is for local development, not public deployment.
+            The scoreboard source is an unofficial public JSON feed, not a guaranteed or endorsed
+            API. It can change or become unavailable. Current bookmaker odds are not included.
           </Text>
         </View>
 
         <Text style={styles.sectionTitle}>What this first model does not know</Text>
         <Text style={styles.body}>
-          It is not trained or back-tested for accuracy. Historical player goals, assists, minutes,
-          and ratings from recent lineups are displayed. It does not calculate a calibrated
-          player-strength score, quantify lineup importance, travel, tactics, suspensions outside
-          the provider’s report, or later odds movements. Recent contributors reported unavailable
-          are excluded rather than assigned a guessed impact score.
+          The model is not trained or back-tested. It uses recent team W/D/L form only. It does not
+          have player stats, lineups, injuries, bookmaker odds, or a calibrated rating.
         </Text>
         <Text style={styles.body}>
           Predictions and accumulator chance figures are rough historical estimates, not calibrated
@@ -105,13 +88,12 @@ export default function ModelScreen() {
           which is not guaranteed. Do not stake money you cannot afford to lose.
         </Text>
         <Text style={styles.body}>
-          No Flashscore scraping is used. Flashscore’s terms restrict copying or extracting
-          substantial database content without permission. This app uses the selected licensed
-          provider feed instead.
+          No Flashscore scraping or paid data service is used. The free scoreboard feed can change
+          without notice. No bet is safe or certain; do not treat model estimates as betting advice.
         </Text>
         <Text style={styles.footer}>
-          No provider token is bundled with this app. Without a configured live feed, the app now
-          explains the setup requirement instead of presenting fictional matches as real fixtures.
+          Live bookmaker odds are not available from this free source. The decimal shown beside a
+          model pick is calculated from form, not fetched from a bookmaker.
         </Text>
       </ScrollView>
     </SafeAreaView>

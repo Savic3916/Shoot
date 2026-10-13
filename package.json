@@ -34,13 +34,13 @@
     "typescript": "~6.0.3"
   },
   "scripts": {
-    "start": "expo start",
+    "start": "node scripts/dev.mjs --web",
     "reset-project": "node ./scripts/reset-project.js",
-    "android": "expo start --android",
-    "ios": "expo start --ios",
-    "web": "expo start --web",
+    "android": "node scripts/dev.mjs --android",
+    "ios": "node scripts/dev.mjs --ios",
+    "web": "node scripts/dev.mjs --web",
     "lint": "expo lint",
-    "server": "node --env-file=.env server/index.mjs"
+    "server": "node server/index.mjs"
   },
   "private": true
 }
