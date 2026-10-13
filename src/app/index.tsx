@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  FlatList,
   Pressable,
   RefreshControl,
-  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -11,7 +11,12 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { FixtureCard } from '@/components/fixture-card';
-import { LEAGUES, getMatchdayData, type LeagueCode, type MatchdayData } from '@/features/football-data';
+import {
+  getMatchdayData,
+  type FootballMatch,
+  type MatchdayData,
+} from '@/features/football-data';
+import { buildDailyAccumulator } from '@/features/accumulator';
 
 const COLORS = {
   background: '#09120D',
@@ -27,14 +32,176 @@ const COLORS = {
 function getDayString(offset: number) {
   const day = new Date();
   day.setDate(day.getDate() + offset);
-  const year = day.getFullYear();
-  const month = String(day.getMonth() + 1).padStart(2, '0');
-  const date = String(day.getDate()).padStart(2, '0');
-  return `${year}-${month}-${date}`;
+  return `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
+}
+
+function AccumulatorCard({ data }: { data: MatchdayData }) {
+  const accumulator = useMemo(
+    () => buildDailyAccumulator(data.fixtures, data.form, data.players),
+    [data.fixtures, data.form, data.players],
+  );
+
+  return (
+    <View style={styles.accumulator}>
+      <View style={styles.accaHeader}>
+        <View style={styles.accaLabel}>
+          <View style={styles.accaDot} />
+          <Text style={styles.accaKicker}>ONE DAILY ACCUMULATOR</Text>
+        </View>
+        <Text style={styles.oddsCap}>MAX 5.00</Text>
+      </View>
+      <Text style={styles.accaTitle}>Matchday shortlist</Text>
+      <Text style={styles.accaDescription}>
+        Double-chance markets with fresh odds and recent team scores. The selection is limited to
+        games with enough available data.
+      </Text>
+
+      {accumulator ? (
+        <>
+          {accumulator.legs.map((leg, index) => (
+            <View key={leg.fixtureId} style={styles.legRow}>
+              <View style={styles.legNumber}>
+                <Text style={styles.legNumberText}>{index + 1}</Text>
+              </View>
+              <View style={styles.legInfo}>
+                <Text style={styles.legTeams} numberOfLines={1}>
+                  {leg.homeTeam} vs {leg.awayTeam}
+                </Text>
+                <Text style={styles.legPick} numberOfLines={1}>
+                  {leg.selection} · {leg.competition}
+                </Text>
+                <Text style={styles.legEvidence}>
+                  {leg.formMatches} recent results · {leg.bookmakerCount} market prices ·{' '}
+                  {leg.lineupsPublished ? 'lineups posted' : 'lineups pending'}
+                </Text>
+                {leg.unavailableCount > 0 && (
+                  <Text style={styles.legWarning}>
+                    {leg.unavailableCount} reported absences — check team news
+                  </Text>
+                )}
+              </View>
+              <Text style={styles.legPrice}>{leg.decimalOdds.toFixed(2)}</Text>
+            </View>
+          ))}
+          <View style={styles.combined}>
+            <View>
+              <Text style={styles.combinedCaption}>COMBINED DECIMAL PRICE</Text>
+              <Text style={styles.combinedSub}>Prices can move before kick-off</Text>
+            </View>
+            <Text style={styles.combinedPrice}>{accumulator.combinedOdds.toFixed(2)}</Text>
+          </View>
+          <Text style={styles.chanceNote}>
+            Historical-rate estimate: {Math.round(accumulator.estimatedChance * 100)}% if each leg
+            were independent. This is not a calibrated forecast, and accumulator outcomes are not
+            guaranteed.
+          </Text>
+        </>
+      ) : (
+        <View style={styles.noPick}>
+          <Text style={styles.noPickTitle}>
+            {data.source === 'demo' ? 'Live feed not connected' : 'No accumulator passed the checks'}
+          </Text>
+          <Text style={styles.noPickCopy}>
+            {data.source === 'demo'
+              ? 'Add a Sportmonks token and an odds add-on with the required league coverage. Demo matches are fictional.'
+              : 'No selection is shown when current double-chance prices or enough recent scores are missing. We do not force a bet to reach the 5.00 cap.'}
+          </Text>
+        </View>
+      )}
+      <Text style={styles.responsible}>
+        No bet is safe or certain. A multi-match accumulator loses if any leg loses. For information
+        only — not betting advice.
+      </Text>
+    </View>
+  );
+}
+
+function ListHeader({
+  data,
+  dayOffset,
+  setDayOffset,
+  displayDate,
+  loading,
+  onRefresh,
+}: {
+  data?: MatchdayData;
+  dayOffset: 0 | 1;
+  setDayOffset: (value: 0 | 1) => void;
+  displayDate: string;
+  loading: boolean;
+  onRefresh: () => void;
+}) {
+  return (
+    <View>
+      <View style={styles.topLine}>
+        <View style={styles.brandMark}><Text style={styles.brandIcon}>S</Text></View>
+        <View style={styles.brandWords}>
+          <Text style={styles.brand}>SIDELINE</Text>
+          <Text style={styles.brandSub}>GLOBAL MATCHDAY</Text>
+        </View>
+        <View style={styles.liveBadge}>
+          <View style={[styles.liveDot, data?.source === 'demo' && styles.demoDot]} />
+          <Text style={styles.liveLabel}>
+            {data?.source === 'sportmonks' ? 'LIVE FEED' : 'DEMO MODE'}
+          </Text>
+        </View>
+      </View>
+
+      <View style={styles.hero}>
+        <Text style={styles.kicker}>THE MATCHDAY BRIEF</Text>
+        <Text style={styles.title}>One slip.{'\n'}No guarantees.</Text>
+        <Text style={styles.heroCopy}>
+          Today’s fixtures across your provider coverage, with form, prices and player availability.
+        </Text>
+        <View style={styles.heroMeta}>
+          <View style={styles.metaDot} />
+          <Text style={styles.metaText}>{displayDate.toUpperCase()}</Text>
+          <Text style={styles.metaDivider}>/</Text>
+          <Text style={styles.metaText}>{data?.fixtures.length ?? '—'} FIXTURES</Text>
+        </View>
+      </View>
+
+      <View style={styles.dayTabs}>
+        {([0, 1] as const).map((offset) => (
+          <Pressable
+            key={offset}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: dayOffset === offset }}
+            onPress={() => setDayOffset(offset)}
+            style={[styles.dayTab, dayOffset === offset && styles.dayTabSelected]}>
+            <Text style={[styles.dayTabText, dayOffset === offset && styles.dayTabTextSelected]}>
+              {offset === 0 ? 'Today' : 'Tomorrow'}
+            </Text>
+          </Pressable>
+        ))}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Refresh fixtures and odds"
+          onPress={onRefresh}
+          style={styles.refreshButton}>
+          {loading ? <ActivityIndicator size="small" color={COLORS.green} /> : <Text style={styles.refreshText}>↻</Text>}
+        </Pressable>
+      </View>
+
+      {data && <AccumulatorCard data={data} />}
+
+      <View style={styles.sectionHeader}>
+        <View>
+          <Text style={styles.sectionTitle}>All matches</Text>
+          <Text style={styles.sectionSubtitle}>
+            {loading ? 'Refreshing provider coverage…' : `${data?.fixtures.length ?? 0} fixtures available`}
+          </Text>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+function keyExtractor(match: FootballMatch) {
+  return match.id;
 }
 
 export default function MatchesScreen() {
-  const [league, setLeague] = useState<LeagueCode>('PL');
   const [dayOffset, setDayOffset] = useState<0 | 1>(0);
   const [refreshKey, setRefreshKey] = useState(0);
   const [response, setResponse] = useState<{
@@ -43,7 +210,8 @@ export default function MatchesScreen() {
     error?: string;
   }>();
   const date = getDayString(dayOffset);
-  const requestKey = `${league}:${date}:${refreshKey}`;
+  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+  const requestKey = `${date}:${timezone}:${refreshKey}`;
   const displayDate = new Date(`${date}T12:00:00`).toLocaleDateString([], {
     weekday: 'long',
     month: 'long',
@@ -52,12 +220,9 @@ export default function MatchesScreen() {
 
   useEffect(() => {
     const controller = new AbortController();
-
-    getMatchdayData(league, date, controller.signal)
-      .then((loadedData) => {
-        if (!controller.signal.aborted) {
-          setResponse({ key: requestKey, data: loadedData });
-        }
+    getMatchdayData(date, timezone, controller.signal)
+      .then((data) => {
+        if (!controller.signal.aborted) setResponse({ key: requestKey, data });
       })
       .catch((reason: unknown) => {
         if (!controller.signal.aborted) {
@@ -67,203 +232,160 @@ export default function MatchesScreen() {
           });
         }
       });
-
     return () => controller.abort();
-  }, [date, league, requestKey]);
+  }, [date, requestKey, timezone]);
 
   const currentResponse = response?.key === requestKey ? response : undefined;
   const data = currentResponse?.data;
   const error = currentResponse?.error;
   const loading = !currentResponse;
-  const fixtures = data?.fixtures.filter((fixture) =>
-    ['SCHEDULED', 'TIMED', 'IN_PLAY', 'LIVE', 'PAUSED', 'FINISHED'].includes(fixture.status),
-  ) ?? [];
+  const fixtures = useMemo(
+    () => (data?.fixtures ?? []).slice().sort((a, b) => a.utcDate.localeCompare(b.utcDate)),
+    [data?.fixtures],
+  );
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
-      <ScrollView
-        contentContainerStyle={styles.content}
-        refreshControl={
-          <RefreshControl
-            refreshing={loading && Boolean(response?.data)}
-            onRefresh={() => setRefreshKey((current) => current + 1)}
-            tintColor={COLORS.green}
-            colors={[COLORS.green]}
-          />
-        }>
-        <View style={styles.topLine}>
-          <View style={styles.brandMark}>
-            <Text style={styles.brandIcon}>S</Text>
-          </View>
-          <View style={styles.brandWords}>
-            <Text style={styles.brand}>SIDELINE</Text>
-            <Text style={styles.brandSub}>FOOTBALL MODEL</Text>
-          </View>
-          <View style={styles.liveBadge}>
-            <View style={styles.liveDot} />
-            <Text style={styles.liveLabel}>{data?.source === 'demo' || !data ? 'DEMO MODE' : 'DATA READY'}</Text>
-          </View>
+      {error ? (
+        <View style={styles.errorWrap}>
+          <Text style={styles.errorTitle}>Couldn’t load matchday data</Text>
+          <Text style={styles.errorText}>{error}</Text>
+          <Pressable style={styles.retryButton} onPress={() => setRefreshKey((key) => key + 1)}>
+            <Text style={styles.retryText}>Try again</Text>
+          </Pressable>
         </View>
-
-        <View style={styles.hero}>
-          <Text style={styles.kicker}>THE MATCHDAY BRIEF</Text>
-          <Text style={styles.title}>Read the{'\n'}form, not the hype.</Text>
-          <Text style={styles.heroCopy}>
-            Recent results and head-to-heads, turned into five transparent probability estimates.
-          </Text>
-          <View style={styles.heroMeta}>
-            <View style={styles.metaDot} />
-            <Text style={styles.metaText}>{displayDate.toUpperCase()}</Text>
-            <Text style={styles.metaDivider}>/</Text>
-            <Text style={styles.metaText}>{data?.competition.toUpperCase() ?? 'MATCH CENTRE'}</Text>
-          </View>
+      ) : loading && !data ? (
+        <View style={styles.loadingWrap}>
+          <ActivityIndicator color={COLORS.green} />
+          <Text style={styles.loadingText}>Loading matchday data…</Text>
         </View>
-
-        <View style={styles.dateSwitch}>
-          {([0, 1] as const).map((offset) => (
-            <Pressable
-              key={offset}
-              accessibilityRole="button"
-              accessibilityState={{ selected: dayOffset === offset }}
-              onPress={() => setDayOffset(offset)}
-              style={[styles.dateOption, dayOffset === offset && styles.dateOptionSelected]}>
-              <Text style={[styles.dateOptionText, dayOffset === offset && styles.dateOptionTextSelected]}>
-                {offset === 0 ? 'Today' : 'Tomorrow'}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
-
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.leagues}>
-          {LEAGUES.map((item) => (
-            <Pressable
-              key={item.code}
-              accessibilityRole="button"
-              accessibilityState={{ selected: league === item.code }}
-              onPress={() => setLeague(item.code)}
-              style={[styles.leagueChip, league === item.code && styles.leagueChipSelected]}>
-              <Text style={[styles.leagueTag, league === item.code && styles.leagueTagSelected]}>
-                {item.shortName}
-              </Text>
-              <Text style={[styles.leagueName, league === item.code && styles.leagueNameSelected]}>
-                {item.name}
-              </Text>
-            </Pressable>
-          ))}
-        </ScrollView>
-
-        <View style={styles.sectionHeader}>
-          <View>
-            <Text style={styles.sectionTitle}>Upcoming fixtures</Text>
-            <Text style={styles.sectionSubtitle}>
-              {loading ? 'Checking the match list…' : `${fixtures.length} ${fixtures.length === 1 ? 'match' : 'matches'} found`}
-            </Text>
-          </View>
-          {loading && <ActivityIndicator color={COLORS.green} />}
-        </View>
-
-        {error ? (
-          <View style={styles.messageCard}>
-            <Text style={styles.messageTitle}>Couldn’t load match data</Text>
-            <Text style={styles.messageText}>{error}</Text>
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => setRefreshKey((current) => current + 1)}
-              style={styles.retryButton}>
-              <Text style={styles.retryText}>Try again</Text>
-            </Pressable>
-          </View>
-        ) : loading && !data ? (
-          <View style={styles.messageCard}>
-            <ActivityIndicator color={COLORS.green} />
-            <Text style={styles.messageText}>Loading matchday data…</Text>
-          </View>
-        ) : fixtures.length ? (
-          fixtures.map((fixture) => (
-            <FixtureCard
-              key={fixture.id}
-              fixture={fixture}
-              history={data?.history ?? []}
-              competition={data?.competition ?? ''}
-              demo={data?.source === 'demo'}
+      ) : (
+        <FlatList
+          data={fixtures}
+          keyExtractor={keyExtractor}
+          contentContainerStyle={styles.content}
+          initialNumToRender={8}
+          maxToRenderPerBatch={8}
+          windowSize={7}
+          refreshControl={
+            <RefreshControl
+              refreshing={loading}
+              onRefresh={() => setRefreshKey((key) => key + 1)}
+              tintColor={COLORS.green}
+              colors={[COLORS.green]}
             />
-          ))
-        ) : (
-          <View style={styles.messageCard}>
-            <Text style={styles.messageTitle}>No fixtures on this date</Text>
-            <Text style={styles.messageText}>
-              Try another day or competition. The live feed only shows matches available from the
-              selected league.
-            </Text>
-          </View>
-        )}
-
-        {data?.source === 'demo' && (
-          <View style={styles.demoNotice}>
-            <Text style={styles.demoNoticeTitle}>Sample data · not live fixtures</Text>
-            <Text style={styles.demoNoticeCopy}>
-              Connect the server and add your football-data.org API token to see real schedules and
-              past scores. See the Model tab for setup steps.
-            </Text>
-          </View>
-        )}
-
-        <View style={styles.bottomNote}>
-          <Text style={styles.bottomNoteText}>
-            Estimates only · Not betting advice · Past performance is not a guarantee
-          </Text>
-        </View>
-      </ScrollView>
+          }
+          ListHeaderComponent={
+            <ListHeader
+              data={data}
+              dayOffset={dayOffset}
+              setDayOffset={setDayOffset}
+              displayDate={displayDate}
+              loading={loading}
+              onRefresh={() => setRefreshKey((key) => key + 1)}
+            />
+          }
+          renderItem={({ item }) => (
+            <FixtureCard
+              fixture={item}
+              homeForm={data?.form[item.homeTeamId] ?? []}
+              awayForm={data?.form[item.awayTeamId] ?? []}
+              homePlayers={data?.players[item.homeTeamId] ?? []}
+              awayPlayers={data?.players[item.awayTeamId] ?? []}
+            />
+          )}
+          ListEmptyComponent={
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyTitle}>No fixtures for this date</Text>
+              <Text style={styles.emptyCopy}>
+                Fixture availability depends on your Sportmonks subscription and league coverage.
+              </Text>
+            </View>
+          }
+          ListFooterComponent={
+            data?.source === 'demo' ? (
+              <Text style={styles.demoNotice}>
+                SAMPLE DATA · Fictional fixtures only. Connect a Sportmonks token for live data.
+              </Text>
+            ) : (
+              <Text style={styles.footerNote}>
+                Source: Sportmonks feed · coverage and odds depend on your plan
+              </Text>
+            )
+          }
+        />
+      )}
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   safeArea: { backgroundColor: COLORS.background, flex: 1 },
-  content: { alignSelf: 'center', maxWidth: 560, paddingBottom: 38, paddingHorizontal: 20, width: '100%' },
-  topLine: { alignItems: 'center', flexDirection: 'row', paddingTop: 13 },
-  brandMark: { alignItems: 'center', backgroundColor: COLORS.green, borderRadius: 12, height: 36, justifyContent: 'center', width: 36 },
+  content: { alignSelf: 'center', maxWidth: 620, paddingBottom: 38, paddingHorizontal: 18, width: '100%' },
+  topLine: { alignItems: 'center', flexDirection: 'row', paddingTop: 12 },
+  brandMark: { alignItems: 'center', backgroundColor: COLORS.green, borderRadius: 11, height: 35, justifyContent: 'center', width: 35 },
   brandIcon: { color: COLORS.background, fontSize: 19, fontWeight: '900' },
   brandWords: { marginLeft: 10 },
   brand: { color: COLORS.text, fontSize: 13, fontWeight: '900', letterSpacing: 1.8 },
   brandSub: { color: COLORS.muted, fontSize: 8, fontWeight: '800', letterSpacing: 1.3, marginTop: 3 },
   liveBadge: { alignItems: 'center', borderColor: COLORS.border, borderRadius: 20, borderWidth: 1, flexDirection: 'row', gap: 6, marginLeft: 'auto', paddingHorizontal: 10, paddingVertical: 7 },
   liveDot: { backgroundColor: COLORS.green, borderRadius: 4, height: 6, width: 6 },
+  demoDot: { backgroundColor: COLORS.amber },
   liveLabel: { color: COLORS.muted, fontSize: 8, fontWeight: '800', letterSpacing: 0.8 },
-  hero: { paddingBottom: 20, paddingTop: 39 },
+  hero: { paddingBottom: 19, paddingTop: 34 },
   kicker: { color: COLORS.green, fontSize: 10, fontWeight: '900', letterSpacing: 2 },
-  title: { color: COLORS.text, fontSize: 39, fontWeight: '800', letterSpacing: -1.6, lineHeight: 44, marginTop: 13 },
-  heroCopy: { color: COLORS.muted, fontSize: 13, lineHeight: 20, marginTop: 12, maxWidth: 340 },
-  heroMeta: { alignItems: 'center', flexDirection: 'row', gap: 8, marginTop: 20 },
+  title: { color: COLORS.text, fontSize: 36, fontWeight: '800', letterSpacing: -1.5, lineHeight: 40, marginTop: 11 },
+  heroCopy: { color: COLORS.muted, fontSize: 12, lineHeight: 19, marginTop: 11, maxWidth: 360 },
+  heroMeta: { alignItems: 'center', flexDirection: 'row', gap: 8, marginTop: 17 },
   metaDot: { backgroundColor: COLORS.green, borderRadius: 3, height: 6, width: 6 },
-  metaText: { color: COLORS.text, fontSize: 9, fontWeight: '800', letterSpacing: 1 },
+  metaText: { color: COLORS.text, fontSize: 9, fontWeight: '800', letterSpacing: 0.9 },
   metaDivider: { color: COLORS.muted, fontSize: 11 },
-  dateSwitch: { alignSelf: 'flex-start', backgroundColor: COLORS.panel, borderColor: COLORS.border, borderRadius: 13, borderWidth: 1, flexDirection: 'row', padding: 3 },
-  dateOption: { borderRadius: 10, paddingHorizontal: 18, paddingVertical: 9 },
-  dateOptionSelected: { backgroundColor: '#26342B' },
-  dateOptionText: { color: COLORS.muted, fontSize: 11, fontWeight: '700' },
-  dateOptionTextSelected: { color: COLORS.green },
-  leagues: { gap: 8, paddingBottom: 22, paddingTop: 17 },
-  leagueChip: { alignItems: 'center', backgroundColor: COLORS.panel, borderColor: COLORS.border, borderRadius: 12, borderWidth: 1, flexDirection: 'row', gap: 8, paddingHorizontal: 11, paddingVertical: 9 },
-  leagueChipSelected: { backgroundColor: '#1D2A22', borderColor: '#6E914A' },
-  leagueTag: { color: COLORS.muted, fontSize: 8, fontWeight: '900', letterSpacing: 0.6 },
-  leagueTagSelected: { color: COLORS.green },
-  leagueName: { color: COLORS.muted, fontSize: 10, fontWeight: '700' },
-  leagueNameSelected: { color: COLORS.text },
-  sectionHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', marginBottom: 13 },
+  dayTabs: { alignItems: 'center', backgroundColor: COLORS.panel, borderColor: COLORS.border, borderRadius: 14, borderWidth: 1, flexDirection: 'row', marginBottom: 17, padding: 3 },
+  dayTab: { alignItems: 'center', borderRadius: 10, flex: 1, paddingVertical: 10 },
+  dayTabSelected: { backgroundColor: '#26342B' },
+  dayTabText: { color: COLORS.muted, fontSize: 11, fontWeight: '700' },
+  dayTabTextSelected: { color: COLORS.green },
+  refreshButton: { alignItems: 'center', borderLeftColor: COLORS.border, borderLeftWidth: 1, height: 32, justifyContent: 'center', width: 43 },
+  refreshText: { color: COLORS.green, fontSize: 21 },
+  accumulator: { backgroundColor: '#111D17', borderColor: '#43583B', borderRadius: 19, borderWidth: 1, marginBottom: 24, padding: 15 },
+  accaHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
+  accaLabel: { alignItems: 'center', flexDirection: 'row', gap: 7 },
+  accaDot: { backgroundColor: COLORS.green, borderRadius: 4, height: 7, width: 7 },
+  accaKicker: { color: COLORS.green, fontSize: 9, fontWeight: '900', letterSpacing: 1.1 },
+  oddsCap: { borderColor: '#536448', borderRadius: 9, borderWidth: 1, color: COLORS.amber, fontSize: 8, fontWeight: '800', overflow: 'hidden', paddingHorizontal: 7, paddingVertical: 4 },
+  accaTitle: { color: COLORS.text, fontSize: 20, fontWeight: '800', letterSpacing: -0.5, marginTop: 13 },
+  accaDescription: { color: COLORS.muted, fontSize: 10, lineHeight: 15, marginTop: 5 },
+  legRow: { alignItems: 'flex-start', borderBottomColor: COLORS.border, borderBottomWidth: 1, flexDirection: 'row', gap: 10, paddingVertical: 12 },
+  legNumber: { alignItems: 'center', backgroundColor: '#243126', borderRadius: 7, height: 22, justifyContent: 'center', width: 22 },
+  legNumberText: { color: COLORS.green, fontSize: 10, fontWeight: '900' },
+  legInfo: { flex: 1, gap: 3 },
+  legTeams: { color: COLORS.text, fontSize: 11, fontWeight: '700' },
+  legPick: { color: COLORS.green, fontSize: 10, fontWeight: '600' },
+  legEvidence: { color: COLORS.muted, fontSize: 8 },
+  legWarning: { color: COLORS.amber, fontSize: 8 },
+  legPrice: { color: COLORS.green, fontSize: 12, fontWeight: '900', paddingTop: 2 },
+  combined: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', paddingTop: 13 },
+  combinedCaption: { color: COLORS.muted, fontSize: 8, fontWeight: '800', letterSpacing: 0.8 },
+  combinedSub: { color: COLORS.muted, fontSize: 8, marginTop: 4 },
+  combinedPrice: { color: COLORS.green, fontSize: 25, fontWeight: '900', letterSpacing: -0.5 },
+  chanceNote: { color: COLORS.muted, fontSize: 9, lineHeight: 14, marginTop: 12 },
+  noPick: { backgroundColor: '#1B211B', borderRadius: 12, marginTop: 13, padding: 12 },
+  noPickTitle: { color: COLORS.amber, fontSize: 11, fontWeight: '800' },
+  noPickCopy: { color: COLORS.muted, fontSize: 10, lineHeight: 15, marginTop: 5 },
+  responsible: { color: '#B1A98F', fontSize: 9, lineHeight: 14, marginTop: 11 },
+  sectionHeader: { marginBottom: 12 },
   sectionTitle: { color: COLORS.text, fontSize: 17, fontWeight: '800', letterSpacing: -0.3 },
   sectionSubtitle: { color: COLORS.muted, fontSize: 10, marginTop: 4 },
-  messageCard: { alignItems: 'center', backgroundColor: COLORS.panel, borderColor: COLORS.border, borderRadius: 19, borderWidth: 1, gap: 10, paddingHorizontal: 20, paddingVertical: 23 },
-  messageTitle: { color: COLORS.text, fontSize: 14, fontWeight: '800', textAlign: 'center' },
-  messageText: { color: COLORS.muted, fontSize: 11, lineHeight: 17, textAlign: 'center' },
-  retryButton: { backgroundColor: '#203025', borderRadius: 10, marginTop: 2, paddingHorizontal: 15, paddingVertical: 9 },
+  errorWrap: { alignItems: 'center', flex: 1, justifyContent: 'center', padding: 25 },
+  errorTitle: { color: COLORS.text, fontSize: 16, fontWeight: '800' },
+  errorText: { color: COLORS.muted, fontSize: 11, lineHeight: 17, marginTop: 8, textAlign: 'center' },
+  retryButton: { backgroundColor: '#203025', borderRadius: 10, marginTop: 14, paddingHorizontal: 16, paddingVertical: 10 },
   retryText: { color: COLORS.green, fontSize: 11, fontWeight: '800' },
-  demoNotice: { backgroundColor: '#231F15', borderColor: '#54462B', borderRadius: 15, borderWidth: 1, marginTop: 1, padding: 14 },
-  demoNoticeTitle: { color: COLORS.amber, fontSize: 11, fontWeight: '800' },
-  demoNoticeCopy: { color: '#B4A98E', fontSize: 10, lineHeight: 15, marginTop: 5 },
-  bottomNote: { alignItems: 'center', borderTopColor: COLORS.border, borderTopWidth: 1, marginTop: 21, paddingTop: 15 },
-  bottomNoteText: { color: COLORS.muted, fontSize: 9, textAlign: 'center' },
+  loadingWrap: { alignItems: 'center', flex: 1, gap: 12, justifyContent: 'center' },
+  loadingText: { color: COLORS.muted, fontSize: 11 },
+  emptyState: { alignItems: 'center', backgroundColor: COLORS.panel, borderColor: COLORS.border, borderRadius: 18, borderWidth: 1, padding: 20 },
+  emptyTitle: { color: COLORS.text, fontSize: 13, fontWeight: '800' },
+  emptyCopy: { color: COLORS.muted, fontSize: 10, lineHeight: 15, marginTop: 6, textAlign: 'center' },
+  demoNotice: { color: COLORS.amber, fontSize: 9, lineHeight: 14, paddingBottom: 15, paddingTop: 5, textAlign: 'center' },
+  footerNote: { color: COLORS.muted, fontSize: 9, paddingBottom: 15, paddingTop: 5, textAlign: 'center' },
 });

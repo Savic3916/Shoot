@@ -11,86 +11,103 @@ const COLORS = {
   amber: '#F2C875',
 };
 
-const steps = [
-  {
-    number: '01',
-    title: 'Start with recent form',
-    detail:
-      'The model takes each side’s eight most recent completed league matches before kick-off. It looks at results and goals for/against, not future scores.',
-  },
-  {
-    number: '02',
-    title: 'Add head-to-head context',
-    detail:
-      'Up to five earlier meetings are included with less weight than recent form. A small prior smooths estimates so a short streak cannot produce a 100% prediction.',
-  },
-  {
-    number: '03',
-    title: 'Show chance and fair odds',
-    detail:
-      'Each estimated chance is converted to decimal fair odds with 1 ÷ probability. These are model outputs—not live bookmaker prices and not calibrated forecasts.',
-  },
-];
-
 export default function ModelScreen() {
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.kicker}>BEHIND THE NUMBERS</Text>
-        <Text style={styles.title}>A clear model.{'\n'}No magic claims.</Text>
+        <Text style={styles.kicker}>HOW THE SHORTLIST WORKS</Text>
+        <Text style={styles.title}>Evidence in.{'\n'}Certainty out? Never.</Text>
         <Text style={styles.intro}>
-          Five historical-rate estimates per fixture. They describe what happened in the data;
-          football stays uncertain.
+          Sideline builds at most one daily accumulator from available licensed match data. It does
+          not force a pick when the checks are not met.
         </Text>
 
-        <View style={styles.notice}>
-          <Text style={styles.noticeTitle}>What the odds mean</Text>
-          <Text style={styles.noticeBody}>
-            A 2.00 fair-odds estimate corresponds to a 50% model probability. It does not predict a
-            guaranteed return, account for bookmaker margin, or tell you what to bet.
+        <View style={styles.warning}>
+          <Text style={styles.warningTitle}>No football bet is always safe</Text>
+          <Text style={styles.warningBody}>
+            The 5.00 combined-price ceiling is a product target, not a 5.00 chance of winning. Every
+            leg can lose; adding legs increases the ways an accumulator can fail.
           </Text>
         </View>
 
-        {steps.map((step) => (
-          <View key={step.number} style={styles.step}>
-            <Text style={styles.stepNumber}>{step.number}</Text>
-            <View style={styles.stepCopy}>
-              <Text style={styles.stepTitle}>{step.title}</Text>
-              <Text style={styles.stepDetail}>{step.detail}</Text>
-            </View>
+        <View style={styles.step}>
+          <Text style={styles.number}>01</Text>
+          <View style={styles.copy}>
+            <Text style={styles.stepTitle}>Compare worldwide fixtures and prices</Text>
+            <Text style={styles.detail}>
+              The app requests all fixtures in the selected local date that are covered by your
+              Sportmonks plan. Current bookmaker double-chance prices are grouped and de-vigged
+              within the available market quotes.
+            </Text>
           </View>
-        ))}
+        </View>
+        <View style={styles.step}>
+          <Text style={styles.number}>02</Text>
+          <View style={styles.copy}>
+            <Text style={styles.stepTitle}>Check recent completed scores</Text>
+            <Text style={styles.detail}>
+              For fixtures with usable prices, the data server loads each team’s latest completed
+              matches from the prior 90 days. The short-list requires at least four results for
+              each team and weights observed form alongside market-implied probability.
+              It requires bookmaker timestamps no older than six hours and skips a fixture when
+              an unavailable player has a tracked recent goal or assist.
+            </Text>
+          </View>
+        </View>
+        <View style={styles.step}>
+          <Text style={styles.number}>03</Text>
+          <View style={styles.copy}>
+            <Text style={styles.stepTitle}>Show availability honestly</Text>
+            <Text style={styles.detail}>
+              Reported injuries or suspensions and official lineups are displayed when supplied by
+              the feed. An empty absence report does not mean every player is fit. Expected XIs are
+              optional and require the matching provider add-on.
+            </Text>
+          </View>
+        </View>
 
         <View style={styles.setupCard}>
-          <Text style={styles.setupKicker}>CONNECT REAL FIXTURES</Text>
-          <Text style={styles.setupTitle}>Switch off demo mode</Text>
+          <Text style={styles.setupKicker}>CONNECT YOUR DATA FEED</Text>
+          <Text style={styles.setupTitle}>Sportmonks account required</Text>
           <Text style={styles.setupText}>
-            1. Create an account at football-data.org and get an API token.{'\n'}
-            2. Copy .env.example to .env, then set FOOTBALL_DATA_API_KEY to your token.{'\n'}
-            3. Set EXPO_PUBLIC_API_URL to your computer’s LAN address and port 4000 (for example,
-            http://192.168.1.20:4000) if running on a phone.{'\n'}
-            4. Start the API with npm run server and the app with npx expo start.
+            1. Choose a Sportmonks plan whose league coverage matches your needs. Their fixtures
+            include leagues only within your subscription.{'\n'}
+            2. Pre-match prices need the separate Odds add-on (listed at €14–€69 depending on base
+            plan when researched); confirm the plan’s bookmaker and
+            market coverage before purchase.{'\n'}
+            3. Create a token, copy .env.example to .env, and set SPORTMONKS_API_TOKEN.{'\n'}
+            4. Expected lineups need the provider’s Expected Lineups add-on; only then set
+            SPORTMONKS_EXPECTED_LINEUPS=true.{'\n'}
+            5. Start the data server with npm run server. Start Expo separately with npx expo start.
+            On a phone, set EXPO_PUBLIC_API_URL to your computer’s LAN address.
           </Text>
           <Text style={styles.securityNote}>
-            The provider token stays on the server and is never bundled into the app. Do not deploy
-            this development server as-is to the public internet.
+            Keep the provider token in the server’s .env, not in an EXPO_PUBLIC variable or the
+            mobile app bundle. The included server is for local development, not public deployment.
           </Text>
         </View>
 
-        <Text style={styles.sourceTitle}>Data & limitations</Text>
-        <Text style={styles.sourceText}>
-          Match schedules and completed results come from football-data.org. The selected
-          competitions are limited to leagues available to your API plan. Data coverage, history
-          depth, and request limits depend on that plan.
+        <Text style={styles.sectionTitle}>What this first model does not know</Text>
+        <Text style={styles.body}>
+          It is not trained or back-tested for accuracy. Historical player goals, assists, minutes,
+          and ratings from recent lineups are displayed. It does not calculate a calibrated
+          player-strength score, quantify lineup importance, travel, tactics, suspensions outside
+          the provider’s report, or later odds movements. Recent contributors reported unavailable
+          are excluded rather than assigned a guessed impact score.
         </Text>
-        <Text style={styles.sourceText}>
-          Scraping third-party score sites is intentionally not used: it may violate site terms,
-          break without notice, or provide data without permission. Use a licensed feed and check
-          its current terms before release.
+        <Text style={styles.body}>
+          Predictions and accumulator chance figures are rough historical estimates, not calibrated
+          probabilities. The combined chance multiplies leg estimates and assumes independence,
+          which is not guaranteed. Do not stake money you cannot afford to lose.
+        </Text>
+        <Text style={styles.body}>
+          No Flashscore scraping is used. Flashscore’s terms restrict copying or extracting
+          substantial database content without permission. This app uses the selected licensed
+          provider feed instead.
         </Text>
         <Text style={styles.footer}>
-          Sample mode uses fictional clubs and generated example scores. Do not treat demo fixtures
-          as real-world information.
+          Demo mode uses fictional clubs and no odds. It will never present sample data as today’s
+          real pick.
         </Text>
       </ScrollView>
     </SafeAreaView>
@@ -99,24 +116,24 @@ export default function ModelScreen() {
 
 const styles = StyleSheet.create({
   safeArea: { backgroundColor: COLORS.background, flex: 1 },
-  content: { alignSelf: 'center', maxWidth: 560, paddingBottom: 42, paddingHorizontal: 22, paddingTop: 29, width: '100%' },
+  content: { alignSelf: 'center', maxWidth: 560, paddingBottom: 42, paddingHorizontal: 22, paddingTop: 28, width: '100%' },
   kicker: { color: COLORS.green, fontSize: 10, fontWeight: '900', letterSpacing: 1.8 },
-  title: { color: COLORS.text, fontSize: 34, fontWeight: '800', letterSpacing: -1.2, lineHeight: 40, marginTop: 12 },
-  intro: { color: COLORS.muted, fontSize: 13, lineHeight: 20, marginTop: 12 },
-  notice: { backgroundColor: '#231F15', borderColor: '#54462B', borderRadius: 17, borderWidth: 1, marginTop: 25, padding: 16 },
-  noticeTitle: { color: COLORS.amber, fontSize: 12, fontWeight: '800' },
-  noticeBody: { color: '#B4A98E', fontSize: 11, lineHeight: 17, marginTop: 7 },
-  step: { borderBottomColor: COLORS.border, borderBottomWidth: 1, flexDirection: 'row', gap: 14, paddingVertical: 18 },
-  stepNumber: { color: COLORS.green, fontSize: 11, fontWeight: '900', paddingTop: 1, width: 22 },
-  stepCopy: { flex: 1, gap: 6 },
-  stepTitle: { color: COLORS.text, fontSize: 13, fontWeight: '800' },
-  stepDetail: { color: COLORS.muted, fontSize: 11, lineHeight: 17 },
-  setupCard: { backgroundColor: COLORS.card, borderColor: COLORS.border, borderRadius: 20, borderWidth: 1, marginTop: 26, padding: 18 },
-  setupKicker: { color: COLORS.green, fontSize: 9, fontWeight: '900', letterSpacing: 1.4 },
-  setupTitle: { color: COLORS.text, fontSize: 18, fontWeight: '800', marginTop: 8 },
-  setupText: { color: COLORS.muted, fontSize: 11, lineHeight: 19, marginTop: 12 },
-  securityNote: { borderTopColor: COLORS.border, borderTopWidth: 1, color: COLORS.amber, fontSize: 10, lineHeight: 16, marginTop: 14, paddingTop: 12 },
-  sourceTitle: { color: COLORS.text, fontSize: 13, fontWeight: '800', marginTop: 27 },
-  sourceText: { color: COLORS.muted, fontSize: 11, lineHeight: 17, marginTop: 9 },
-  footer: { color: COLORS.muted, fontSize: 10, fontStyle: 'italic', lineHeight: 15, marginTop: 21 },
+  title: { color: COLORS.text, fontSize: 32, fontWeight: '800', letterSpacing: -1.2, lineHeight: 39, marginTop: 12 },
+  intro: { color: COLORS.muted, fontSize: 12, lineHeight: 19, marginTop: 12 },
+  warning: { backgroundColor: '#231F15', borderColor: '#54462B', borderRadius: 16, borderWidth: 1, marginTop: 22, padding: 15 },
+  warningTitle: { color: COLORS.amber, fontSize: 12, fontWeight: '800' },
+  warningBody: { color: '#B4A98E', fontSize: 10, lineHeight: 16, marginTop: 6 },
+  step: { borderBottomColor: COLORS.border, borderBottomWidth: 1, flexDirection: 'row', gap: 13, paddingVertical: 16 },
+  number: { color: COLORS.green, fontSize: 10, fontWeight: '900', paddingTop: 2, width: 22 },
+  copy: { flex: 1, gap: 5 },
+  stepTitle: { color: COLORS.text, fontSize: 12, fontWeight: '800' },
+  detail: { color: COLORS.muted, fontSize: 10, lineHeight: 16 },
+  setupCard: { backgroundColor: COLORS.card, borderColor: COLORS.border, borderRadius: 18, borderWidth: 1, marginTop: 23, padding: 16 },
+  setupKicker: { color: COLORS.green, fontSize: 9, fontWeight: '900', letterSpacing: 1.3 },
+  setupTitle: { color: COLORS.text, fontSize: 17, fontWeight: '800', marginTop: 8 },
+  setupText: { color: COLORS.muted, fontSize: 10, lineHeight: 17, marginTop: 10 },
+  securityNote: { borderTopColor: COLORS.border, borderTopWidth: 1, color: COLORS.amber, fontSize: 9, lineHeight: 15, marginTop: 12, paddingTop: 10 },
+  sectionTitle: { color: COLORS.text, fontSize: 13, fontWeight: '800', marginTop: 23 },
+  body: { color: COLORS.muted, fontSize: 10, lineHeight: 16, marginTop: 8 },
+  footer: { color: COLORS.muted, fontSize: 9, fontStyle: 'italic', lineHeight: 14, marginTop: 19 },
 });
