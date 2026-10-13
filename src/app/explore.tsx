@@ -1,180 +1,122 @@
-import { Image } from 'expo-image';
-import { SymbolView } from 'expo-symbols';
-import { Platform, Pressable, ScrollView, StyleSheet } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { ExternalLink } from '@/components/external-link';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Collapsible } from '@/components/ui/collapsible';
-import { WebBadge } from '@/components/web-badge';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
-import { useTheme } from '@/hooks/use-theme';
+const COLORS = {
+  background: '#09120D',
+  card: '#111D17',
+  border: '#29362F',
+  muted: '#829087',
+  text: '#F4F7F4',
+  green: '#B8F36B',
+  amber: '#F2C875',
+};
 
-export default function TabTwoScreen() {
-  const safeAreaInsets = useSafeAreaInsets();
-  const insets = {
-    ...safeAreaInsets,
-    bottom: safeAreaInsets.bottom + BottomTabInset + Spacing.three,
-  };
-  const theme = useTheme();
+const steps = [
+  {
+    number: '01',
+    title: 'Start with recent form',
+    detail:
+      'The model takes each side’s eight most recent completed league matches before kick-off. It looks at results and goals for/against, not future scores.',
+  },
+  {
+    number: '02',
+    title: 'Add head-to-head context',
+    detail:
+      'Up to five earlier meetings are included with less weight than recent form. A small prior smooths estimates so a short streak cannot produce a 100% prediction.',
+  },
+  {
+    number: '03',
+    title: 'Show chance and fair odds',
+    detail:
+      'Each estimated chance is converted to decimal fair odds with 1 ÷ probability. These are model outputs—not live bookmaker prices and not calibrated forecasts.',
+  },
+];
 
-  const contentPlatformStyle = Platform.select({
-    android: {
-      paddingTop: insets.top,
-      paddingLeft: insets.left,
-      paddingRight: insets.right,
-      paddingBottom: insets.bottom,
-    },
-    web: {
-      paddingTop: Spacing.six,
-      paddingBottom: Spacing.four,
-    },
-  });
-
+export default function ModelScreen() {
   return (
-    <ScrollView
-      style={[styles.scrollView, { backgroundColor: theme.background }]}
-      contentInset={insets}
-      contentContainerStyle={[styles.contentContainer, contentPlatformStyle]}>
-      <ThemedView style={styles.container}>
-        <ThemedView style={styles.titleContainer}>
-          <ThemedText type="subtitle">Explore</ThemedText>
-          <ThemedText style={styles.centerText} themeColor="textSecondary">
-            This starter app includes example{'\n'}code to help you get started.
-          </ThemedText>
+    <SafeAreaView style={styles.safeArea} edges={['top']}>
+      <ScrollView contentContainerStyle={styles.content}>
+        <Text style={styles.kicker}>BEHIND THE NUMBERS</Text>
+        <Text style={styles.title}>A clear model.{'\n'}No magic claims.</Text>
+        <Text style={styles.intro}>
+          Five historical-rate estimates per fixture. They describe what happened in the data;
+          football stays uncertain.
+        </Text>
 
-          <ExternalLink href="https://docs.expo.dev" asChild>
-            <Pressable style={({ pressed }) => pressed && styles.pressed}>
-              <ThemedView type="backgroundElement" style={styles.linkButton}>
-                <ThemedText type="link">Expo documentation</ThemedText>
-                <SymbolView
-                  tintColor={theme.text}
-                  name={{ ios: 'arrow.up.right.square', android: 'link', web: 'link' }}
-                  size={12}
-                />
-              </ThemedView>
-            </Pressable>
-          </ExternalLink>
-        </ThemedView>
+        <View style={styles.notice}>
+          <Text style={styles.noticeTitle}>What the odds mean</Text>
+          <Text style={styles.noticeBody}>
+            A 2.00 fair-odds estimate corresponds to a 50% model probability. It does not predict a
+            guaranteed return, account for bookmaker margin, or tell you what to bet.
+          </Text>
+        </View>
 
-        <ThemedView style={styles.sectionsWrapper}>
-          <Collapsible title="File-based routing">
-            <ThemedText type="small">
-              This app has two screens: <ThemedText type="code">src/app/index.tsx</ThemedText> and{' '}
-              <ThemedText type="code">src/app/explore.tsx</ThemedText>
-            </ThemedText>
-            <ThemedText type="small">
-              The layout file in <ThemedText type="code">src/app/_layout.tsx</ThemedText> sets up
-              the tab navigator.
-            </ThemedText>
-            <ExternalLink href="https://docs.expo.dev/router/introduction">
-              <ThemedText type="linkPrimary">Learn more</ThemedText>
-            </ExternalLink>
-          </Collapsible>
+        {steps.map((step) => (
+          <View key={step.number} style={styles.step}>
+            <Text style={styles.stepNumber}>{step.number}</Text>
+            <View style={styles.stepCopy}>
+              <Text style={styles.stepTitle}>{step.title}</Text>
+              <Text style={styles.stepDetail}>{step.detail}</Text>
+            </View>
+          </View>
+        ))}
 
-          <Collapsible title="Android, iOS, and web support">
-            <ThemedView type="backgroundElement" style={styles.collapsibleContent}>
-              <ThemedText type="small">
-                You can open this project on Android, iOS, and the web. To open the web version,
-                press <ThemedText type="smallBold">w</ThemedText> in the terminal running this
-                project.
-              </ThemedText>
-              <Image
-                source={require('@/assets/images/tutorial-web.png')}
-                style={styles.imageTutorial}
-              />
-            </ThemedView>
-          </Collapsible>
+        <View style={styles.setupCard}>
+          <Text style={styles.setupKicker}>CONNECT REAL FIXTURES</Text>
+          <Text style={styles.setupTitle}>Switch off demo mode</Text>
+          <Text style={styles.setupText}>
+            1. Create an account at football-data.org and get an API token.{'\n'}
+            2. Copy .env.example to .env, then set FOOTBALL_DATA_API_KEY to your token.{'\n'}
+            3. Set EXPO_PUBLIC_API_URL to your computer’s LAN address and port 4000 (for example,
+            http://192.168.1.20:4000) if running on a phone.{'\n'}
+            4. Start the API with npm run server and the app with npx expo start.
+          </Text>
+          <Text style={styles.securityNote}>
+            The provider token stays on the server and is never bundled into the app. Do not deploy
+            this development server as-is to the public internet.
+          </Text>
+        </View>
 
-          <Collapsible title="Images">
-            <ThemedText type="small">
-              For static images, you can use the <ThemedText type="code">@2x</ThemedText> and{' '}
-              <ThemedText type="code">@3x</ThemedText> suffixes to provide files for different
-              screen densities.
-            </ThemedText>
-            <Image source={require('@/assets/images/react-logo.png')} style={styles.imageReact} />
-            <ExternalLink href="https://reactnative.dev/docs/images">
-              <ThemedText type="linkPrimary">Learn more</ThemedText>
-            </ExternalLink>
-          </Collapsible>
-
-          <Collapsible title="Light and dark mode components">
-            <ThemedText type="small">
-              This template has light and dark mode support. The{' '}
-              <ThemedText type="code">useColorScheme()</ThemedText> hook lets you inspect what the
-              user&apos;s current color scheme is, and so you can adjust UI colors accordingly.
-            </ThemedText>
-            <ExternalLink href="https://docs.expo.dev/develop/user-interface/color-themes/">
-              <ThemedText type="linkPrimary">Learn more</ThemedText>
-            </ExternalLink>
-          </Collapsible>
-
-          <Collapsible title="Animations">
-            <ThemedText type="small">
-              This template includes an example of an animated component. The{' '}
-              <ThemedText type="code">src/components/ui/collapsible.tsx</ThemedText> component uses
-              the powerful <ThemedText type="code">react-native-reanimated</ThemedText> library to
-              animate opening this hint.
-            </ThemedText>
-          </Collapsible>
-        </ThemedView>
-        {Platform.OS === 'web' && <WebBadge />}
-      </ThemedView>
-    </ScrollView>
+        <Text style={styles.sourceTitle}>Data & limitations</Text>
+        <Text style={styles.sourceText}>
+          Match schedules and completed results come from football-data.org. The selected
+          competitions are limited to leagues available to your API plan. Data coverage, history
+          depth, and request limits depend on that plan.
+        </Text>
+        <Text style={styles.sourceText}>
+          Scraping third-party score sites is intentionally not used: it may violate site terms,
+          break without notice, or provide data without permission. Use a licensed feed and check
+          its current terms before release.
+        </Text>
+        <Text style={styles.footer}>
+          Sample mode uses fictional clubs and generated example scores. Do not treat demo fixtures
+          as real-world information.
+        </Text>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  scrollView: {
-    flex: 1,
-  },
-  contentContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-  },
-  container: {
-    maxWidth: MaxContentWidth,
-    flexGrow: 1,
-  },
-  titleContainer: {
-    gap: Spacing.three,
-    alignItems: 'center',
-    paddingHorizontal: Spacing.four,
-    paddingVertical: Spacing.six,
-  },
-  centerText: {
-    textAlign: 'center',
-  },
-  pressed: {
-    opacity: 0.7,
-  },
-  linkButton: {
-    flexDirection: 'row',
-    paddingHorizontal: Spacing.four,
-    paddingVertical: Spacing.two,
-    borderRadius: Spacing.five,
-    justifyContent: 'center',
-    gap: Spacing.one,
-    alignItems: 'center',
-  },
-  sectionsWrapper: {
-    gap: Spacing.five,
-    paddingHorizontal: Spacing.four,
-    paddingTop: Spacing.three,
-  },
-  collapsibleContent: {
-    alignItems: 'center',
-  },
-  imageTutorial: {
-    width: '100%',
-    aspectRatio: 296 / 171,
-    borderRadius: Spacing.three,
-    marginTop: Spacing.two,
-  },
-  imageReact: {
-    width: 100,
-    height: 100,
-    alignSelf: 'center',
-  },
+  safeArea: { backgroundColor: COLORS.background, flex: 1 },
+  content: { alignSelf: 'center', maxWidth: 560, paddingBottom: 42, paddingHorizontal: 22, paddingTop: 29, width: '100%' },
+  kicker: { color: COLORS.green, fontSize: 10, fontWeight: '900', letterSpacing: 1.8 },
+  title: { color: COLORS.text, fontSize: 34, fontWeight: '800', letterSpacing: -1.2, lineHeight: 40, marginTop: 12 },
+  intro: { color: COLORS.muted, fontSize: 13, lineHeight: 20, marginTop: 12 },
+  notice: { backgroundColor: '#231F15', borderColor: '#54462B', borderRadius: 17, borderWidth: 1, marginTop: 25, padding: 16 },
+  noticeTitle: { color: COLORS.amber, fontSize: 12, fontWeight: '800' },
+  noticeBody: { color: '#B4A98E', fontSize: 11, lineHeight: 17, marginTop: 7 },
+  step: { borderBottomColor: COLORS.border, borderBottomWidth: 1, flexDirection: 'row', gap: 14, paddingVertical: 18 },
+  stepNumber: { color: COLORS.green, fontSize: 11, fontWeight: '900', paddingTop: 1, width: 22 },
+  stepCopy: { flex: 1, gap: 6 },
+  stepTitle: { color: COLORS.text, fontSize: 13, fontWeight: '800' },
+  stepDetail: { color: COLORS.muted, fontSize: 11, lineHeight: 17 },
+  setupCard: { backgroundColor: COLORS.card, borderColor: COLORS.border, borderRadius: 20, borderWidth: 1, marginTop: 26, padding: 18 },
+  setupKicker: { color: COLORS.green, fontSize: 9, fontWeight: '900', letterSpacing: 1.4 },
+  setupTitle: { color: COLORS.text, fontSize: 18, fontWeight: '800', marginTop: 8 },
+  setupText: { color: COLORS.muted, fontSize: 11, lineHeight: 19, marginTop: 12 },
+  securityNote: { borderTopColor: COLORS.border, borderTopWidth: 1, color: COLORS.amber, fontSize: 10, lineHeight: 16, marginTop: 14, paddingTop: 12 },
+  sourceTitle: { color: COLORS.text, fontSize: 13, fontWeight: '800', marginTop: 27 },
+  sourceText: { color: COLORS.muted, fontSize: 11, lineHeight: 17, marginTop: 9 },
+  footer: { color: COLORS.muted, fontSize: 10, fontStyle: 'italic', lineHeight: 15, marginTop: 21 },
 });

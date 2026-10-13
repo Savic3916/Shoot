@@ -1,56 +1,46 @@
-# Welcome to your Expo app 👋
+# Sideline
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Sideline is an Expo / React Native football match form app. It shows fixtures, recent form, and five historical-rate estimates per match:
 
-## Get started
+- Home win or draw
+- Away win or draw
+- Home team to score 2+ goals
+- Away team to score 2+ goals
+- Over 2.5 total goals
 
-1. Install dependencies
+Each estimated chance is displayed with its reciprocal as **decimal fair odds**. These are not bookmaker prices, guaranteed predictions, or betting advice. The included calculation is an explainable historical baseline, not a statistically validated or calibrated forecasting model.
 
-   ```bash
-   npm install
-   ```
+## Run the app
 
-2. Start the app
+Install dependencies with `npm install`, then start Expo with `npx expo start`. Without a configured data server the app opens in **demo mode**, which uses fictional teams and generated example scores clearly marked as sample data.
 
-   ```bash
-   npx expo start
-   ```
+## Connect live fixtures and results
 
-In the output, you'll find options to open the app in a
+The app uses [football-data.org](https://www.football-data.org/) for match schedules and completed results. Its API supports competitions, match lists, date filters, and authentication with an API token. The selected competitions are Premier League (`PL`), La Liga (`PD`), Bundesliga (`BL1`), Serie A (`SA`), and Ligue 1 (`FL1`); actual access and history depth depend on the provider's current plan and competition coverage.
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+The provider token belongs on the server, not in an Expo `EXPO_PUBLIC_` variable or a mobile app bundle.
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+1. Register with [football-data.org](https://www.football-data.org/client/register) and obtain an API token.
+2. Copy `.env.example` to `.env` and set `FOOTBALL_DATA_API_KEY` to the token.
+3. For Expo web or a simulator on the same computer, keep `EXPO_PUBLIC_API_URL=http://localhost:4000`. For a physical phone, set it to the computer's private LAN address, for example `http://192.168.1.20:4000`. Keep the phone and computer on the same network.
+4. Start the API server with `npm run server`.
+5. In another terminal, start the app with `npx expo start`. Restart Expo after changing `.env`.
 
-## Get a fresh project
+The server fetches fixtures for the selected date and up to 120 days of completed competition matches; responses are cached for three minutes. The provider may impose request limits or restrict competitions/history for your plan. The sample API server is for local development only: it has permissive CORS and in-memory rate limiting, and should not be deployed publicly without authentication, production-grade abuse controls, and HTTPS.
 
-When you're ready, run:
+## Model
 
-```bash
-npm run reset-project
-```
+For a fixture, the model takes each team's latest eight completed matches before kick-off and up to five previous head-to-head meetings. It weights head-to-head observations at 0.65 and adds a Beta(2, 2) smoothing prior. The five market rates are calculated from the observed results/goals relevant to each market, then bounded to 4–96% before converting to fair odds. No future matches are included.
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+The app does not claim accuracy. Before relying on a model, evaluate it against held-out historical seasons, compare probability calibration and a proper scoring rule against simple baselines, and account for league, lineup, injury, and schedule information not included here.
 
-### Other setup steps
+## Why no scraping?
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+This app deliberately does not scrape score sites. Site terms, data permissions, page structure, and robots policies differ; scraping may be prohibited, fragile, and incomplete. Use a provider feed you are authorized to access and review its terms before commercial use.
 
-## Learn more
+## Research references
 
-To learn more about developing your project with Expo, look at the following resources:
-
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
-
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+- [football-data.org API quickstart and endpoint reference](https://www.football-data.org/documentation/quickstart)
+- [football-data.org competition coverage](https://www.football-data.org/coverage)
+- [Expo SDK 57 documentation](https://docs.expo.dev/versions/v57.0.0/)
+- [Expo Router documentation](https://docs.expo.dev/versions/v57.0.0/sdk/router/)
