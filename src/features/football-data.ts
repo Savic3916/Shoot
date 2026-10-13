@@ -1,5 +1,3 @@
-import { Platform } from 'react-native';
-
 export type MarketOdd = {
   market: string;
   marketId: number | null;
@@ -63,78 +61,111 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
 
-function parseMatch(value: unknown): FootballMatch {
+const ESPN_ROOT = 'https://site.api.espn.com/apis/site/v2/sports/soccer';
+const SCOREBOARD_LEAGUES = [
+  'uefa.champions', 'uefa.europa', 'uefa.europa.conf', 'uefa.nations',
+  'eng.1', 'eng.2', 'eng.3', 'eng.4', 'eng.fa', 'eng.league_cup',
+  'esp.1', 'esp.2', 'esp.copa_del_rey', 'ger.1', 'ger.2', 'ger.dfb_pokal',
+  'ita.1', 'ita.2', 'ita.coppa_italia', 'fra.1', 'fra.2', 'fra.coupe_de_france',
+  'ned.1', 'por.1', 'sco.1', 'bel.1', 'tur.1', 'bra.1', 'arg.1', 'mex.1',
+  'usa.1', 'conmebol.libertadores', 'conmebol.sudamericana', 'aus.1', 'jpn.1',
+];
+
+function records(value: unknown): Record<string, unknown>[] {
+  return Array.isArray(value) ? value.filter(isRecord) : [];
+}
+
+function parseScore(value: unknown): number | null {
+  const score = typeof value === 'number' || typeof value === 'string' ? Number(value) : NaN;
+  return Number.isFinite(score) && score >= 0 ? score : null;
+}
+
+function getForm(value: unknown, utcDate: string): TeamResult[] {
+  if (typeof value !== 'string') return [];
+  return (value.toUpperCase().match(/[WDL]/g) ?? []).map((outcome, index) => ({
+    utcDate: `${utcDate}#${index}`,
+    opponent: 'Recent form',
+    goalsFor: null,
+    goalsAgainst: null,
+    outcome: outcome as 'W' | 'D' | 'L',
+  }));
+}
+
+function normalizeEvent(event: Record<string, unknown>, defaultCompetition: string) {
+  const competition = records(event.competitions)[0];
+  const competitors = records(competition?.competitors);
+  const home = competitors.find((team) => team.homeAway === 'home');
+  const away = competitors.find((team) => team.homeAway === 'away');
+  const homeTeam = isRecord(home?.team) ? home.team : undefined;
+  const awayTeam = isRecord(away?.team) ? away.team : undefined;
+  const timestamp = typeof event.date === 'string' ? Date.parse(event.date) : NaN;
+  const utcDate = Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : undefined;
+  const id = typeof event.id === 'string' || typeof event.id === 'number'
+    ? String(event.id)
+    : undefined;
+  const homeId = homeTeam?.id === undefined ? '' : String(homeTeam.id);
+  const awayId = awayTeam?.id === undefined ? '' : String(awayTeam.id);
+  const homeName = homeTeam?.displayName ?? homeTeam?.name;
+  const awayName = awayTeam?.displayName ?? awayTeam?.name;
   if (
-    !isRecord(value) ||
-    typeof value.id !== 'string' ||
-    typeof value.utcDate !== 'string' ||
-    typeof value.status !== 'string' ||
-    typeof value.competition !== 'string' ||
-    typeof value.homeTeam !== 'string' ||
-    typeof value.awayTeam !== 'string' ||
-    typeof value.homeTeamId !== 'string' ||
-    typeof value.awayTeamId !== 'string' ||
-    (value.homeGoals !== null && typeof value.homeGoals !== 'number') ||
-    (value.awayGoals !== null && typeof value.awayGoals !== 'number') ||
-    !Array.isArray(value.odds) ||
-    !Array.isArray(value.unavailable) ||
-    typeof value.lineupsPublished !== 'boolean' ||
-    !Array.isArray(value.expectedPlayers) ||
-    !value.expectedPlayers.every((player) => typeof player === 'string')
+    !utcDate ||
+    !id ||
+    !homeId ||
+    !awayId ||
+    typeof homeName !== 'string' ||
+    typeof awayName !== 'string'
   ) {
-    throw new Error('The match service returned an invalid fixture.');
+    return undefined;
   }
 
-  const odds: MarketOdd[] = value.odds.map((odd) => {
-    if (
-      !isRecord(odd) ||
-      typeof odd.market !== 'string' ||
-      (odd.marketId !== null && typeof odd.marketId !== 'number') ||
-      typeof odd.selection !== 'string' ||
-      typeof odd.decimal !== 'number' ||
-      !Number.isFinite(odd.decimal) ||
-      typeof odd.bookmaker !== 'string' ||
-      (odd.updatedAt !== null && typeof odd.updatedAt !== 'string')
-    ) {
-      throw new Error('The match service returned an invalid odds entry.');
-    }
-    return {
-      market: odd.market,
-      marketId: odd.marketId,
-      selection: odd.selection,
-      decimal: odd.decimal,
-      bookmaker: odd.bookmaker,
-      updatedAt: odd.updatedAt,
-    };
-  });
-  const unavailable: PlayerAbsence[] = value.unavailable.map((player) => {
-    if (
-      !isRecord(player) ||
-      typeof player.name !== 'string' ||
-      typeof player.reason !== 'string' ||
-      typeof player.category !== 'string'
-    ) {
-      throw new Error('The match service returned invalid availability data.');
-    }
-    return { name: player.name, reason: player.reason, category: player.category };
-  });
+  const statusType = isRecord(competition?.status) && isRecord(competition.status.type)
+    ? competition.status.type
+    : undefined;
+  const status = statusType?.completed === true || statusType?.state === 'post'
+    ? 'FINISHED'
+    : statusType?.state === 'in'
+      ? 'LIVE'
+      : statusType?.state === 'pre'
+        ? 'NOT STARTED'
+        : typeof statusType?.detail === 'string'
+          ? statusType.detail
+          : 'UNKNOWN';
+  const league = records(event.competitions).find((item) => typeof item.name === 'string');
+  const eventCompetitors = competitors;
+  const homeEntry = eventCompetitors.find((team) => team.homeAway === 'home');
+  const awayEntry = eventCompetitors.find((team) => team.homeAway === 'away');
 
   return {
-    id: value.id,
-    utcDate: value.utcDate,
-    status: value.status,
-    competition: value.competition,
-    homeTeam: value.homeTeam,
-    awayTeam: value.awayTeam,
-    homeTeamId: value.homeTeamId,
-    awayTeamId: value.awayTeamId,
-    homeGoals: value.homeGoals,
-    awayGoals: value.awayGoals,
-    odds,
-    unavailable,
-    lineupsPublished: value.lineupsPublished,
-    expectedPlayers: value.expectedPlayers,
+    fixture: {
+      id,
+      utcDate,
+      status,
+      competition: typeof league?.name === 'string' ? league.name : defaultCompetition,
+      homeTeam: homeName,
+      awayTeam: awayName,
+      homeTeamId: homeId,
+      awayTeamId: awayId,
+      homeGoals: parseScore(homeEntry?.score),
+      awayGoals: parseScore(awayEntry?.score),
+      odds: [],
+      unavailable: [],
+      lineupsPublished: false,
+      expectedPlayers: [],
+    } satisfies FootballMatch,
+    homeForm: getForm(home?.form, utcDate),
+    awayForm: getForm(away?.form, utcDate),
   };
+}
+
+function localDate(timestamp: string, timezone: string) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date(timestamp));
+  const values = Object.fromEntries(parts.map(({ type, value }) => [type, value]));
+  return `${values.year}-${values.month}-${values.day}`;
 }
 
 export async function getMatchdayData(
@@ -142,124 +173,65 @@ export async function getMatchdayData(
   timezone: string,
   signal?: AbortSignal,
 ): Promise<MatchdayData> {
-  const configuredUrl = process.env.EXPO_PUBLIC_API_URL?.trim().replace(/\/+$/, '');
-  const baseUrl = configuredUrl || (Platform.OS === 'web' && __DEV__ ? 'http://localhost:4000' : '');
-  if (!baseUrl) {
-    throw new Error(
-      'EXPO_PUBLIC_API_URL is missing. On a phone, set it in .env to your computer’s LAN URL (for example, http://192.168.1.20:4000), then restart Expo.',
-    );
+  const failures: string[] = [];
+  const scoreboards: { league: string; events: Record<string, unknown>[] }[] = [];
+  let nextLeague = 0;
+  async function worker() {
+    while (nextLeague < SCOREBOARD_LEAGUES.length) {
+      const league = SCOREBOARD_LEAGUES[nextLeague];
+      nextLeague += 1;
+      const endpoint = new URL(`${ESPN_ROOT}/${league}/scoreboard`);
+      endpoint.searchParams.set('dates', date.replaceAll('-', ''));
+      try {
+        const response = await fetch(endpoint, { signal });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const payload: unknown = await response.json();
+        if (!isRecord(payload) || !Array.isArray(payload.events)) {
+          throw new Error('invalid scoreboard response');
+        }
+        const events = records(payload.events);
+        const leagueName = records(payload.leagues)[0]?.name;
+        scoreboards.push({
+          league: typeof leagueName === 'string' ? leagueName : league,
+          events,
+        });
+      } catch (error) {
+        if (signal?.aborted) throw error;
+        failures.push(`${league}: ${error instanceof Error ? error.message : 'request failed'}`);
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: 6 }, () => worker()));
+  if (!scoreboards.length) {
+    throw new Error(`The free soccer scoreboard feed could not be reached. ${failures.slice(0, 2).join(' ')}`);
   }
 
-  let endpoint: URL;
-  try {
-    endpoint = new URL(`${baseUrl}/api/matches`);
-  } catch {
-    throw new Error('EXPO_PUBLIC_API_URL must be a valid absolute URL.');
-  }
-  const host = endpoint.hostname.replace(/^\[|\]$/g, '');
-  const localHost =
-    host === 'localhost' ||
-    host === '127.0.0.1' ||
-    /^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host) ||
-    /^192\.168\.\d{1,3}\.\d{1,3}$/.test(host) ||
-    /^172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}$/.test(host) ||
-    /^fd[0-9a-f]{2}:/i.test(host);
-  if (endpoint.protocol !== 'https:' && !(endpoint.protocol === 'http:' && localHost)) {
-    throw new Error('The match service URL must use HTTPS, except for local development.');
-  }
-  endpoint.searchParams.set('date', date);
-  endpoint.searchParams.set('timezone', timezone);
-
-  let response: Response;
-  try {
-    response = await fetch(endpoint, { signal });
-  } catch (error) {
-    if (signal?.aborted) throw error;
-    throw new Error(
-      `Cannot reach the free football data server at ${endpoint.origin}. Start the app with npm start so it launches the match feed and Expo together.`,
-      { cause: error },
-    );
-  }
-  const payload: unknown = await response.json().catch(() => null);
-  if (!response.ok) {
-    throw new Error(
-      isRecord(payload) && typeof payload.error === 'string'
-        ? payload.error
-        : `Match service request failed (${response.status}).`,
-    );
-  }
-  if (
-    !isRecord(payload) ||
-    payload.source !== 'espn' ||
-    payload.date !== date ||
-    !Array.isArray(payload.fixtures) ||
-    !isRecord(payload.form) ||
-    !isRecord(payload.players) ||
-    !Array.isArray(payload.coverageWarnings) ||
-    !payload.coverageWarnings.every((warning) => typeof warning === 'string')
-  ) {
-    throw new Error('The match service returned an invalid response.');
-  }
-
+  const fixtures: FootballMatch[] = [];
   const form: Record<string, TeamResult[]> = {};
   const players: Record<string, PlayerSummary[]> = {};
-  for (const [teamId, results] of Object.entries(payload.form)) {
-    if (!Array.isArray(results)) throw new Error('The match service returned invalid team form.');
-    form[teamId] = results.map((result) => {
-      if (
-        !isRecord(result) ||
-        typeof result.utcDate !== 'string' ||
-        typeof result.opponent !== 'string' ||
-        (result.goalsFor !== null && typeof result.goalsFor !== 'number') ||
-        (result.goalsAgainst !== null && typeof result.goalsAgainst !== 'number') ||
-        (result.outcome !== 'W' && result.outcome !== 'D' && result.outcome !== 'L')
-      ) {
-        throw new Error('The match service returned an invalid past result.');
+  for (const scoreboard of scoreboards) {
+    for (const event of scoreboard.events) {
+      const normalized = normalizeEvent(event, scoreboard.league);
+      if (!normalized || localDate(normalized.fixture.utcDate, timezone) !== date) continue;
+      const { fixture, homeForm, awayForm } = normalized;
+      fixtures.push(fixture);
+      if ((form[fixture.homeTeamId]?.length ?? 0) < homeForm.length) {
+        form[fixture.homeTeamId] = homeForm;
       }
-      return {
-        utcDate: result.utcDate,
-        opponent: result.opponent,
-        goalsFor: result.goalsFor,
-        goalsAgainst: result.goalsAgainst,
-        outcome: result.outcome,
-      };
-    });
-  }
-  for (const [teamId, summaries] of Object.entries(payload.players)) {
-    if (!Array.isArray(summaries)) {
-      throw new Error('The match service returned invalid player summaries.');
+      if ((form[fixture.awayTeamId]?.length ?? 0) < awayForm.length) {
+        form[fixture.awayTeamId] = awayForm;
+      }
     }
-    players[teamId] = summaries.map((summary) => {
-      if (
-        !isRecord(summary) ||
-        typeof summary.id !== 'string' ||
-        typeof summary.name !== 'string' ||
-        typeof summary.appearances !== 'number' ||
-        typeof summary.goals !== 'number' ||
-        typeof summary.assists !== 'number' ||
-        typeof summary.minutes !== 'number' ||
-        (summary.averageRating !== null && typeof summary.averageRating !== 'number')
-      ) {
-        throw new Error('The match service returned an invalid player summary.');
-      }
-      return {
-        id: summary.id,
-        name: summary.name,
-        appearances: summary.appearances,
-        goals: summary.goals,
-        assists: summary.assists,
-        minutes: summary.minutes,
-        averageRating: summary.averageRating,
-      };
-    });
   }
+  const uniqueFixtures = [...new Map(fixtures.map((fixture) => [fixture.id, fixture])).values()]
+    .sort((a, b) => a.utcDate.localeCompare(b.utcDate));
 
   return {
-    fixtures: payload.fixtures.map(parseMatch),
+    fixtures: uniqueFixtures,
     form,
     players,
     source: 'espn',
     date,
-    coverageWarnings: payload.coverageWarnings,
+    coverageWarnings: failures,
   };
 }

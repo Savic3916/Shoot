@@ -59,17 +59,21 @@ export function FixtureCard({ fixture, homeForm, awayForm, homePlayers, awayPlay
     [fixture.awayTeamId]: awayPlayers,
   });
   const kickoff = new Date(fixture.utcDate);
+  const kickoffTime = kickoff.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   const live = ['IN PLAY', 'LIVE', 'PAUSED', 'INPLAY'].includes(fixture.status.toUpperCase());
   const finished = fixture.status.toUpperCase() === 'FINISHED';
-  const score = finished || live
-    ? `${fixture.homeGoals ?? '–'} : ${fixture.awayGoals ?? '–'}`
-    : kickoff.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const score = `${fixture.homeGoals ?? '–'} : ${fixture.awayGoals ?? '–'}`;
 
   return (
     <View style={styles.card}>
       <View style={styles.cardHeader}>
-        <Text style={styles.competition} numberOfLines={1}>{fixture.competition.toUpperCase()}</Text>
-        <Text style={[styles.status, live && styles.live]}>{live ? 'LIVE' : finished ? 'FT' : score}</Text>
+        <View style={styles.matchMeta}>
+          <Text style={styles.competition} numberOfLines={1}>{fixture.competition.toUpperCase()}</Text>
+          <Text style={styles.kickoff}>KICKOFF · {kickoffTime} LOCAL</Text>
+        </View>
+        {(live || finished) && (
+          <Text style={[styles.status, live && styles.live]}>{live ? 'LIVE' : 'FT'}</Text>
+        )}
       </View>
       <View style={styles.teams}>
         <View style={styles.teamColumn}>
@@ -161,6 +165,8 @@ const styles = StyleSheet.create({
   card: { backgroundColor: COLORS.card, borderColor: COLORS.line, borderRadius: 20, borderWidth: 1, marginBottom: 12, overflow: 'hidden' },
   cardHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 15 },
   competition: { color: COLORS.muted, flex: 1, fontSize: 9, fontWeight: '800', letterSpacing: 1 },
+  matchMeta: { flex: 1, gap: 4 },
+  kickoff: { color: COLORS.green, fontSize: 8, fontWeight: '800', letterSpacing: 0.5 },
   status: { color: COLORS.green, fontSize: 10, fontWeight: '800' },
   live: { color: COLORS.red },
   teams: { alignItems: 'center', flexDirection: 'row', gap: 10, justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 17 },

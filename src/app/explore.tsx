@@ -67,9 +67,9 @@ export default function ModelScreen() {
           <Text style={styles.setupKicker}>FREE DATA FEED</Text>
           <Text style={styles.setupTitle}>No subscription or token needed</Text>
           <Text style={styles.setupText}>
-            Run npm start from the project folder. This starts the local free-feed server and Expo
-            together. In the browser, open the local URL shown by Expo. For a physical phone, set
-            EXPO_PUBLIC_API_URL in .env to your computer’s LAN IP and restart.
+            Run npm start from the project folder and open the local URL shown by Expo. Fixtures
+            load directly from ESPN public scoreboards, so the app requires an internet connection
+            but no local feed server, API token, paid plan, or .env setup.
           </Text>
           <Text style={styles.securityNote}>
             The scoreboard source is an unofficial public JSON feed, not a guaranteed or endorsed

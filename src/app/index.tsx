@@ -256,10 +256,9 @@ export default function MatchesScreen() {
           <Text style={styles.errorTitle}>Free match feed unavailable</Text>
           <Text style={styles.errorText}>{error}</Text>
           <Text style={styles.errorText}>
-            Start the app with npm start; it launches the free match feed server and Expo together.
-            On a phone, set EXPO_PUBLIC_API_URL in .env to your computer’s LAN address before
-            starting. This source has no paid account or token, but does not provide bookmaker
-            odds, player availability, or confirmed lineups.
+            Start or restart the app with npm start and check your internet connection. Fixtures
+            load directly from public ESPN scoreboards; no local server, token, or paid account is
+            required.
           </Text>
           <Pressable style={styles.retryButton} onPress={() => setRefreshKey((key) => key + 1)}>
             <Text style={styles.retryText}>Retry live feed</Text>
