@@ -251,9 +251,10 @@ export default function MatchesScreen() {
           <Text style={styles.errorTitle}>Live data unavailable</Text>
           <Text style={styles.errorText}>{error}</Text>
           <Text style={styles.errorText}>
-            The app needs a working Sportmonks token, an Odds add-on, and league coverage that
-            includes the competitions you want (such as the UEFA Champions League). Check the
-            Model tab setup, then restart the app and data server.
+            For web, run Copy-Item .env.example .env in PowerShell, add your Sportmonks token to
+            .env, start npm run server in a separate terminal, then restart Expo. For a phone, also
+            set EXPO_PUBLIC_API_URL to your computer’s LAN address. Your Sportmonks plan must
+            include the required leagues (such as UEFA Champions League) and Odds add-on.
           </Text>
           <Pressable style={styles.retryButton} onPress={() => setRefreshKey((key) => key + 1)}>
             <Text style={styles.retryText}>Retry live feed</Text>

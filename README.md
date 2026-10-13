@@ -22,11 +22,11 @@ Sportmonks documents fixture-by-date requests, pre-match odds, lineups, player a
 Setup:
 
 1. Create a Sportmonks account and verify which plan covers your target leagues, odds, and request volume. Provider pages list base plans starting at €29/month and the pre-match odds add-on at €14–€69 depending on plan (checked October 2026); prices and entitlements can change.
-2. Create an API token. Copy `.env.example` to `.env` and set `SPORTMONKS_API_TOKEN`.
+2. Create an API token. In PowerShell, run `Copy-Item .env.example .env`, then open `.env` and replace the `SPORTMONKS_API_TOKEN` placeholder with your token. Never paste the token into chat or commit `.env`.
 3. Confirm your Sportmonks plan includes the competitions you need, including UEFA Champions League, and the Odds add-on covers your chosen bookmakers and markets. The API cannot return fixtures or odds outside your account entitlements.
-4. Start the local data server: `npm run server`.
-5. In another terminal start Expo: `npx expo start`.
-6. On a physical device, set `EXPO_PUBLIC_API_URL` in `.env` to your computer's private LAN address, such as `http://192.168.1.20:4000`, and restart Expo. Do not commit `.env`.
+4. Start the local data server in one terminal: `npm run server`. Its `/health` endpoint should report `"configured":true`.
+5. In another terminal start Expo: `npx expo start`. Expo web uses `http://localhost:4000` by default in development.
+6. For a physical phone, set `EXPO_PUBLIC_API_URL` in `.env` to your computer's private LAN address, such as `http://192.168.1.20:4000`, and restart Expo. Do not commit `.env`.
 
 The server keeps the provider token off-device and fetches all paginated fixtures returned for the selected local date, with scores, odds, sidelined reports, official lineups, and optional expected lineups. For up to 30 fixtures with double-chance odds, it requests each team's latest eight completed matches from the preceding 90 days, including player goals, assists, minutes, and ratings where the feed includes them. Responses are cached in memory for three minutes (fixture data) and 30 minutes (team form). A provider subscription's call limits apply.
 

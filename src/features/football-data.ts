@@ -1,3 +1,5 @@
+import { Platform } from 'react-native';
+
 export type MarketOdd = {
   market: string;
   marketId: number | null;
@@ -138,10 +140,11 @@ export async function getMatchdayData(
   timezone: string,
   signal?: AbortSignal,
 ): Promise<MatchdayData> {
-  const baseUrl = process.env.EXPO_PUBLIC_API_URL?.trim().replace(/\/+$/, '');
+  const configuredUrl = process.env.EXPO_PUBLIC_API_URL?.trim().replace(/\/+$/, '');
+  const baseUrl = configuredUrl || (Platform.OS === 'web' && __DEV__ ? 'http://localhost:4000' : '');
   if (!baseUrl) {
     throw new Error(
-      'Live fixtures, odds, and predictions are not configured. Set up the Sportmonks token and API URL as described in the Model tab.',
+      'EXPO_PUBLIC_API_URL is missing. On a phone, set it in .env to your computer’s LAN URL (for example, http://192.168.1.20:4000), then restart Expo.',
     );
   }
 
@@ -165,7 +168,16 @@ export async function getMatchdayData(
   endpoint.searchParams.set('date', date);
   endpoint.searchParams.set('timezone', timezone);
 
-  const response = await fetch(endpoint, { signal });
+  let response: Response;
+  try {
+    response = await fetch(endpoint, { signal });
+  } catch (error) {
+    if (signal?.aborted) throw error;
+    throw new Error(
+      `Cannot reach the Sideline data server at ${endpoint.origin}. Start it in a separate terminal with npm run server, and check that .env contains a valid Sportmonks token.`,
+      { cause: error },
+    );
+  }
   const payload: unknown = await response.json().catch(() => null);
   if (!response.ok) {
     throw new Error(
