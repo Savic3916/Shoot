@@ -60,7 +60,11 @@ export default function PicksScreen() {
     buildBrief(data, publish, controller.signal)
       .then(publish)
       .catch(() => {
-        // The bookmaker-only stage stays on screen if the results download fails.
+        if (controller.signal.aborted) return;
+        setLoaded({
+          key: requestKey,
+          error: 'Recent results could not be downloaded, so today’s picks can’t be locked in yet.',
+        });
       });
     return () => controller.abort();
   }, [data, requestKey]);
@@ -69,7 +73,6 @@ export default function PicksScreen() {
   const picks = brief?.picks ?? [];
   const stats = picks.length > 1 ? combinedStats(picks) : undefined;
   const track = brief?.track;
-  const refine = brief?.stage === 'market';
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
@@ -89,8 +92,8 @@ export default function PicksScreen() {
 
         <Text style={styles.title}>{dayOffset === 0 ? 'Today’s three' : 'Tomorrow’s three'}</Text>
         <Text style={styles.subtitle}>
-          Three bets from different markets, each built from the model’s predicted match — not
-          just a home win.
+          Three bets from different markets, each built from the model’s predicted match. Once
+          set for the day, they never change.
         </Text>
 
         <View style={styles.tabs}>
@@ -117,18 +120,15 @@ export default function PicksScreen() {
               <Text style={styles.buttonText}>Try again</Text>
             </Pressable>
           </View>
-        ) : !brief ? (
+        ) : !brief?.picksReady ? (
           <View style={styles.loading}>
             <ActivityIndicator color={PALETTE.primary} />
-            <Text style={styles.loadingText}>Reading the odds…</Text>
+            <Text style={styles.loadingText}>
+              {brief ? 'Analysing recent results…' : 'Reading the odds…'}
+            </Text>
           </View>
         ) : (
           <>
-            {refine && (
-              <Text style={styles.refining}>
-                Still loading recent results to refine the model — these picks may change.
-              </Text>
-            )}
             {picks.map((pick, index) => (
               <PickCard key={pick.fixtureId} pick={pick} index={index} />
             ))}
@@ -191,7 +191,6 @@ const styles = StyleSheet.create({
   date: { color: PALETTE.faint, fontSize: 13, marginBottom: 18, marginTop: 12 },
   loading: { alignItems: 'center', gap: 12, paddingVertical: 60 },
   loadingText: { color: PALETTE.muted, fontSize: 14 },
-  refining: { backgroundColor: PALETTE.cautionSoft, borderRadius: 12, color: PALETTE.caution, fontSize: 13, lineHeight: 18, marginBottom: 14, overflow: 'hidden', padding: 12 },
   notice: { backgroundColor: PALETTE.surface, borderRadius: 16, padding: 18 },
   noticeTitle: { color: PALETTE.ink, fontSize: 16, fontWeight: '700' },
   noticeText: { color: PALETTE.muted, fontSize: 14, lineHeight: 20, marginTop: 6 },
