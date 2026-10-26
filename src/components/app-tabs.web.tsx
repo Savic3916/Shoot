@@ -19,7 +19,7 @@ export default function AppTabs() {
         },
       }}>
       <Tabs.Screen name="index" options={{ title: 'Matches' }} />
-      <Tabs.Screen name="explore" options={{ title: 'Model' }} />
+      <Tabs.Screen name="explore" options={{ title: 'Insights' }} />
     </Tabs>
   );
 }

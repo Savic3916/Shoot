@@ -1,16 +1,17 @@
 import { StyleSheet, Text, View } from 'react-native';
 
-import { getFixturePrediction } from '@/features/accumulator';
+import { MatchAnalysisPanel } from '@/components/match-analysis';
+import type { MatchAnalysis } from '@/features/analysis';
 import type { FootballMatch, PlayerSummary, TeamResult } from '@/features/football-data';
 
 const COLORS = {
-  card: '#111D17',
-  line: '#29362F',
-  muted: '#829087',
-  white: '#F4F7F4',
-  green: '#B8F36B',
-  red: '#F08378',
-  amber: '#F2C875',
+  card: '#FFFFFF',
+  line: '#E4E6EA',
+  muted: '#6B7280',
+  white: '#141518',
+  green: '#E41827',
+  red: '#E41827',
+  amber: '#B45309',
 };
 
 type Props = {
@@ -19,6 +20,7 @@ type Props = {
   awayForm: TeamResult[];
   homePlayers: PlayerSummary[];
   awayPlayers: PlayerSummary[];
+  analysis?: MatchAnalysis;
 };
 
 function Form({ results }: { results: TeamResult[] }) {
@@ -50,14 +52,7 @@ function Form({ results }: { results: TeamResult[] }) {
   );
 }
 
-export function FixtureCard({ fixture, homeForm, awayForm, homePlayers, awayPlayers }: Props) {
-  const prediction = getFixturePrediction(fixture, {
-    [fixture.homeTeamId]: homeForm,
-    [fixture.awayTeamId]: awayForm,
-  }, {
-    [fixture.homeTeamId]: homePlayers,
-    [fixture.awayTeamId]: awayPlayers,
-  });
+export function FixtureCard({ fixture, homeForm, awayForm, homePlayers, awayPlayers, analysis }: Props) {
   const kickoff = new Date(fixture.utcDate);
   const kickoffTime = kickoff.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   const live = ['IN PLAY', 'LIVE', 'PAUSED', 'INPLAY'].includes(fixture.status.toUpperCase());
@@ -107,30 +102,7 @@ export function FixtureCard({ fixture, homeForm, awayForm, homePlayers, awayPlay
           <Form results={awayForm} />
         </View>
       </View>
-      <View style={styles.oddsSection}>
-        <Text style={styles.oddsTitle}>FREE-FEED MODEL ESTIMATE · NOT BOOKMAKER ODDS</Text>
-        {prediction ? (
-          <View style={styles.pickCard}>
-            <Text style={styles.pickKicker}>FORM-BASED PICK · DOUBLE CHANCE</Text>
-            <View style={styles.pickRow}>
-              <Text style={styles.pickSelection}>{prediction.selection}</Text>
-              <Text style={styles.pickPrice}>{prediction.decimalOdds.toFixed(2)}</Text>
-            </View>
-            <Text style={styles.pickEvidence}>
-              {Math.round(prediction.estimatedChance * 100)}% uncalibrated estimate · based on{' '}
-              {prediction.formMatches} recent results · decimal shown is calculated, not quoted by a bookmaker.
-            </Text>
-          </View>
-        ) : (
-          <Text style={styles.noPick}>
-            No eligible pick: this free feed did not supply enough recent team form. Live bookmaker
-            odds are not available from this source.
-          </Text>
-        )}
-        <Text style={styles.noPick}>
-          Current bookmaker prices aren’t provided by this free fixture feed.
-        </Text>
-      </View>
+      <MatchAnalysisPanel analysis={analysis} fixture={fixture} />
       <View style={styles.availability}>
         <Text style={styles.availabilityText}>
           Player availability unavailable
@@ -167,7 +139,7 @@ const styles = StyleSheet.create({
   competition: { color: COLORS.muted, flex: 1, fontSize: 9, fontWeight: '800', letterSpacing: 1 },
   matchMeta: { flex: 1, gap: 4 },
   kickoff: { color: COLORS.green, fontSize: 8, fontWeight: '800', letterSpacing: 0.5 },
-  status: { color: COLORS.green, fontSize: 10, fontWeight: '800' },
+  status: { color: COLORS.muted, fontSize: 10, fontWeight: '800' },
   live: { color: COLORS.red },
   teams: { alignItems: 'center', flexDirection: 'row', gap: 10, justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 17 },
   teamColumn: { flex: 1, gap: 5 },
@@ -181,28 +153,19 @@ const styles = StyleSheet.create({
   formLabel: { color: COLORS.muted, fontSize: 9, fontWeight: '600' },
   formRow: { flexDirection: 'row', gap: 4 },
   formDot: { alignItems: 'center', borderRadius: 6, height: 18, justifyContent: 'center', width: 18 },
-  formWin: { backgroundColor: '#24402A' },
-  formDraw: { backgroundColor: '#353C35' },
-  formLoss: { backgroundColor: '#442D2D' },
+  formWin: { backgroundColor: '#1F8A4C' },
+  formDraw: { backgroundColor: '#8E949E' },
+  formLoss: { backgroundColor: '#E41827' },
   formLetter: { color: COLORS.white, fontSize: 8, fontWeight: '800' },
   formUnavailable: { color: COLORS.amber, fontSize: 9 },
-  playerStats: { backgroundColor: '#0D1711', borderTopColor: COLORS.line, borderTopWidth: 1, gap: 4, paddingHorizontal: 16, paddingVertical: 10 },
+  playerStats: { backgroundColor: '#F5F6F8', borderTopColor: COLORS.line, borderTopWidth: 1, gap: 4, paddingHorizontal: 16, paddingVertical: 10 },
   playerStatsTitle: { color: COLORS.muted, fontSize: 8, fontWeight: '800', letterSpacing: 0.5, marginBottom: 2 },
-  playerStat: { color: '#C1C9C2', fontSize: 9 },
-  oddsSection: { borderTopColor: COLORS.line, borderTopWidth: 1, paddingHorizontal: 16, paddingVertical: 11 },
-  oddsTitle: { color: COLORS.muted, fontSize: 8, fontWeight: '800', letterSpacing: 0.8, marginBottom: 8 },
-  pickCard: { backgroundColor: '#17271B', borderColor: '#43583B', borderRadius: 11, borderWidth: 1, marginBottom: 8, padding: 10 },
-  pickKicker: { color: COLORS.green, fontSize: 8, fontWeight: '900', letterSpacing: 0.8 },
-  pickRow: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', marginTop: 5 },
-  pickSelection: { color: COLORS.white, flex: 1, fontSize: 11, fontWeight: '800' },
-  pickPrice: { color: COLORS.green, fontSize: 15, fontWeight: '900', marginLeft: 8 },
-  pickEvidence: { color: COLORS.muted, fontSize: 8, lineHeight: 13, marginTop: 5 },
-  noPick: { color: COLORS.muted, fontSize: 9, lineHeight: 14, marginBottom: 6 },
+  playerStat: { color: '#4B5563', fontSize: 9 },
   availability: { alignItems: 'center', borderTopColor: COLORS.line, borderTopWidth: 1, flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 10 },
   availabilityText: { color: COLORS.muted, flex: 1, fontSize: 9 },
   lineupState: { color: COLORS.amber, fontSize: 8, fontWeight: '800', letterSpacing: 0.5 },
   lineupConfirmed: { color: COLORS.green },
-  absences: { backgroundColor: '#1C211B', gap: 4, paddingHorizontal: 16, paddingVertical: 10 },
-  absenceText: { color: '#C1B79E', fontSize: 9 },
+  absences: { backgroundColor: '#F5F6F8', gap: 4, paddingHorizontal: 16, paddingVertical: 10 },
+  absenceText: { color: '#6B7280', fontSize: 9 },
   expectedTitle: { color: COLORS.amber, fontSize: 8, fontWeight: '800', letterSpacing: 0.5 },
 });
