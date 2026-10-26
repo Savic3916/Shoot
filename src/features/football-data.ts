@@ -1,3 +1,5 @@
+import { parseMarketOdds, type MarketOdds } from './odds';
+
 export type MarketOdd = {
   market: string;
   marketId: number | null;
@@ -25,6 +27,9 @@ export type FootballMatch = {
   homeGoals: number | null;
   awayGoals: number | null;
   odds: MarketOdd[];
+  /** Bookmaker prices (1X2, totals, handicap) when the feed carries them. */
+  market?: MarketOdds;
+  leagueId: string;
   unavailable: PlayerAbsence[];
   lineupsPublished: boolean;
   expectedPlayers: string[];
@@ -62,15 +67,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 const ESPN_ROOT = 'https://site.api.espn.com/apis/site/v2/sports/soccer';
-const SCOREBOARD_LEAGUES = [
-  'uefa.champions', 'uefa.europa', 'uefa.europa.conf', 'uefa.nations',
-  'eng.1', 'eng.2', 'eng.3', 'eng.4', 'eng.fa', 'eng.league_cup',
-  'esp.1', 'esp.2', 'esp.copa_del_rey', 'ger.1', 'ger.2', 'ger.dfb_pokal',
-  'ita.1', 'ita.2', 'ita.coppa_italia', 'fra.1', 'fra.2', 'fra.coupe_de_france',
-  'ned.1', 'por.1', 'sco.1', 'bel.1', 'tur.1', 'bra.1', 'arg.1', 'mex.1',
-  'usa.1', 'conmebol.libertadores', 'conmebol.sudamericana', 'aus.1', 'jpn.1',
-];
-
 function records(value: unknown): Record<string, unknown>[] {
   return Array.isArray(value) ? value.filter(isRecord) : [];
 }
@@ -91,7 +87,19 @@ function getForm(value: unknown, utcDate: string): TeamResult[] {
   }));
 }
 
-function normalizeEvent(event: Record<string, unknown>, defaultCompetition: string) {
+function competitionName(event: Record<string, unknown>) {
+  const slug = isRecord(event.season) && typeof event.season.slug === 'string' ? event.season.slug : '';
+  const words = slug.replace(/^\d{4}(-\d{2,4})?-/, '').split('-').filter(Boolean);
+  return words.length
+    ? words.map((word) => word[0].toUpperCase() + word.slice(1)).join(' ')
+    : 'Football';
+}
+
+function leagueIdOf(event: Record<string, unknown>) {
+  return typeof event.uid === 'string' ? (event.uid.match(/~l:(\d+)/)?.[1] ?? '0') : '0';
+}
+
+export function normalizeEvent(event: Record<string, unknown>) {
   const competition = records(event.competitions)[0];
   const competitors = records(competition?.competitors);
   const home = competitors.find((team) => team.homeAway === 'home');
@@ -130,7 +138,6 @@ function normalizeEvent(event: Record<string, unknown>, defaultCompetition: stri
         : typeof statusType?.detail === 'string'
           ? statusType.detail
           : 'UNKNOWN';
-  const league = records(event.competitions).find((item) => typeof item.name === 'string');
   const eventCompetitors = competitors;
   const homeEntry = eventCompetitors.find((team) => team.homeAway === 'home');
   const awayEntry = eventCompetitors.find((team) => team.homeAway === 'away');
@@ -140,7 +147,8 @@ function normalizeEvent(event: Record<string, unknown>, defaultCompetition: stri
       id,
       utcDate,
       status,
-      competition: typeof league?.name === 'string' ? league.name : defaultCompetition,
+      competition: competitionName(event),
+      leagueId: leagueIdOf(event),
       homeTeam: homeName,
       awayTeam: awayName,
       homeTeamId: homeId,
@@ -148,6 +156,7 @@ function normalizeEvent(event: Record<string, unknown>, defaultCompetition: stri
       homeGoals: parseScore(homeEntry?.score),
       awayGoals: parseScore(awayEntry?.score),
       odds: [],
+      market: parseMarketOdds(records(competition?.odds)[0]),
       unavailable: [],
       lineupsPublished: false,
       expectedPlayers: [],
@@ -168,50 +177,56 @@ function localDate(timestamp: string, timezone: string) {
   return `${values.year}-${values.month}-${values.day}`;
 }
 
+function compactDate(date: string, offsetDays = 0) {
+  const day = new Date(`${date}T12:00:00Z`);
+  day.setUTCDate(day.getUTCDate() + offsetDays);
+  return day.toISOString().slice(0, 10).replaceAll('-', '');
+}
+
+/** One request returns every competition ESPN covers for the day (scoreboard "all" feed). */
+export async function fetchDayEvents(
+  yyyymmdd: string,
+  signal?: AbortSignal,
+): Promise<{ events: Record<string, unknown>[] }> {
+  const endpoint = new URL(`${ESPN_ROOT}/all/scoreboard`);
+  endpoint.searchParams.set('dates', yyyymmdd);
+  endpoint.searchParams.set('limit', '1000');
+  const response = await fetch(endpoint, { signal });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  const payload: unknown = await response.json();
+  if (!isRecord(payload) || !Array.isArray(payload.events)) {
+    throw new Error('invalid scoreboard response');
+  }
+  return { events: records(payload.events) };
+}
+
 export async function getMatchdayData(
   date: string,
   timezone: string,
   signal?: AbortSignal,
 ): Promise<MatchdayData> {
+  // The feed buckets days in US time, so neighbouring days can hold this local day's kickoffs.
+  const days = [-1, 0, 1].map((offset) => compactDate(date, offset));
   const failures: string[] = [];
-  const scoreboards: { league: string; events: Record<string, unknown>[] }[] = [];
-  let nextLeague = 0;
-  async function worker() {
-    while (nextLeague < SCOREBOARD_LEAGUES.length) {
-      const league = SCOREBOARD_LEAGUES[nextLeague];
-      nextLeague += 1;
-      const endpoint = new URL(`${ESPN_ROOT}/${league}/scoreboard`);
-      endpoint.searchParams.set('dates', date.replaceAll('-', ''));
-      try {
-        const response = await fetch(endpoint, { signal });
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const payload: unknown = await response.json();
-        if (!isRecord(payload) || !Array.isArray(payload.events)) {
-          throw new Error('invalid scoreboard response');
-        }
-        const events = records(payload.events);
-        const leagueName = records(payload.leagues)[0]?.name;
-        scoreboards.push({
-          league: typeof leagueName === 'string' ? leagueName : league,
-          events,
-        });
-      } catch (error) {
+  const batches = await Promise.all(
+    days.map((day) =>
+      fetchDayEvents(day, signal).catch((error: unknown) => {
         if (signal?.aborted) throw error;
-        failures.push(`${league}: ${error instanceof Error ? error.message : 'request failed'}`);
-      }
-    }
-  }
-  await Promise.all(Array.from({ length: 6 }, () => worker()));
-  if (!scoreboards.length) {
+        failures.push(`${day}: ${error instanceof Error ? error.message : 'request failed'}`);
+        return undefined;
+      }),
+    ),
+  );
+  if (!batches.some(Boolean)) {
     throw new Error(`The free soccer scoreboard feed could not be reached. ${failures.slice(0, 2).join(' ')}`);
   }
 
   const fixtures: FootballMatch[] = [];
   const form: Record<string, TeamResult[]> = {};
   const players: Record<string, PlayerSummary[]> = {};
-  for (const scoreboard of scoreboards) {
-    for (const event of scoreboard.events) {
-      const normalized = normalizeEvent(event, scoreboard.league);
+  for (const batch of batches) {
+    for (const event of batch?.events ?? []) {
+      const normalized = normalizeEvent(event);
       if (!normalized || localDate(normalized.fixture.utcDate, timezone) !== date) continue;
       const { fixture, homeForm, awayForm } = normalized;
       fixtures.push(fixture);
