@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { Logo } from '@/components/logo';
 import { PickCard } from '@/components/pick-card';
 import { PALETTE } from '@/constants/palette';
 import { getMatchdayData, type MatchdayData } from '@/features/football-data';
@@ -78,8 +79,7 @@ export default function PicksScreen() {
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.brandRow}>
-          <View style={styles.logo}><Text style={styles.logoText}>S</Text></View>
-          <Text style={styles.brand}>Shoot</Text>
+          <View style={styles.logoWrap}><Logo size={38} /></View>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Refresh picks"
@@ -92,8 +92,8 @@ export default function PicksScreen() {
 
         <Text style={styles.title}>{dayOffset === 0 ? 'Today’s three' : 'Tomorrow’s three'}</Text>
         <Text style={styles.subtitle}>
-          Three bets from different markets, each built from the model’s predicted match. Once
-          set for the day, they never change.
+          Three bets a day, each from a different market and chosen for how likely it is to land.
+          Once set, they never change.
         </Text>
 
         <View style={styles.tabs}>
@@ -176,9 +176,7 @@ const styles = StyleSheet.create({
   safeArea: { backgroundColor: PALETTE.background, flex: 1 },
   content: { alignSelf: 'center', maxWidth: 520, paddingBottom: 48, paddingHorizontal: 20, paddingTop: 12, width: '100%' },
   brandRow: { alignItems: 'center', flexDirection: 'row', gap: 10 },
-  logo: { alignItems: 'center', backgroundColor: PALETTE.primary, borderRadius: 10, height: 32, justifyContent: 'center', width: 32 },
-  logoText: { color: '#FFFFFF', fontSize: 17, fontWeight: '800' },
-  brand: { color: PALETTE.ink, flex: 1, fontSize: 18, fontWeight: '700', letterSpacing: -0.3 },
+  logoWrap: { flex: 1 },
   refresh: { paddingVertical: 4 },
   refreshText: { color: PALETTE.primary, fontSize: 14, fontWeight: '600' },
   title: { color: PALETTE.ink, fontSize: 34, fontWeight: '800', letterSpacing: -1, marginTop: 30 },

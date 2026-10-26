@@ -13,4 +13,9 @@ export const PALETTE = {
   caution: '#B8741A',
   cautionSoft: '#FBF3E4',
   negative: '#B4423A',
+  /** Team colours used in every comparison: home is red, away is blue. */
+  homeRed: '#D64545',
+  homeRedSoft: '#FBEAEA',
+  awayBlue: '#2F6FDE',
+  awayBlueSoft: '#E8F0FD',
 } as const;

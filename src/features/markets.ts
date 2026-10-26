@@ -9,7 +9,7 @@ import {
 /** Market keys: home | draw | away | dc1x | dcx2 | dc12 | o15 | u25 | btts | nobtts | ah:-0.5 | ahA:0.5 */
 export type MarketGroup = 'result' | 'goals' | 'btts';
 
-export const OVER_LINES = [1.5, 2.5, 3.5];
+export const OVER_LINES = [1.5, 2.5, 3.5, 4.5];
 export const HANDICAP_LINES = [-2.5, -1.5, 1.5, 2.5];
 
 export type MarketFamily = 'result' | 'goals' | 'btts' | 'handicap';

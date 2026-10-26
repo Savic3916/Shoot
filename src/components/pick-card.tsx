@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { AnalysisPanel } from '@/components/analysis-panel';
 import { PALETTE } from '@/constants/palette';
 import { formatPercent } from '@/features/markets';
 import type { Pick } from '@/features/picks';
@@ -53,14 +54,22 @@ export function PickCard({ pick, index }: { pick: Pick; index: number }) {
         accessibilityRole="button"
         accessibilityState={{ expanded: open }}
         onPress={() => setOpen(!open)}
-        hitSlop={8}>
-        <Text style={styles.toggle}>{open ? 'Hide reasoning' : 'Why this bet'}</Text>
+        style={[styles.dropdown, open && styles.dropdownOpen]}>
+        <Text style={styles.dropdownText}>{open ? 'Hide full analysis' : 'See the full analysis'}</Text>
+        <Text style={styles.chevron}>{open ? '▴' : '▾'}</Text>
       </Pressable>
       {open && (
-        <View style={styles.reasons}>
-          {pick.reasons.map((reason) => (
-            <Text key={reason} style={styles.reason}>{reason}</Text>
-          ))}
+        <View style={styles.panel}>
+          {pick.insight ? (
+            <AnalysisPanel insight={pick.insight} pickReasons={pick.reasons} />
+          ) : (
+            <View style={styles.fallback}>
+              {pick.reasons.map((reason) => (
+                <Text key={reason} style={styles.reason}>{reason}</Text>
+              ))}
+              <Text style={styles.reason}>Form, head-to-head and team news are still loading or unavailable.</Text>
+            </View>
+          )}
         </View>
       )}
     </View>
@@ -99,7 +108,11 @@ const styles = StyleSheet.create({
   tier: { borderRadius: 8, borderWidth: 1, fontSize: 10, fontWeight: '700', letterSpacing: 0.8, overflow: 'hidden', paddingHorizontal: 7, paddingVertical: 3 },
   track: { backgroundColor: PALETTE.surface, borderRadius: 4, height: 6, marginTop: 8, overflow: 'hidden' },
   fill: { borderRadius: 4, height: 6 },
-  toggle: { color: PALETTE.primary, fontSize: 14, fontWeight: '600', marginTop: 16 },
-  reasons: { gap: 8, marginTop: 10 },
+  dropdown: { alignItems: 'center', backgroundColor: PALETTE.primarySoft, borderRadius: 12, flexDirection: 'row', justifyContent: 'space-between', marginTop: 18, paddingHorizontal: 14, paddingVertical: 12 },
+  dropdownOpen: { borderBottomLeftRadius: 0, borderBottomRightRadius: 0 },
+  dropdownText: { color: PALETTE.primary, fontSize: 14, fontWeight: '700' },
+  chevron: { color: PALETTE.primary, fontSize: 14 },
+  panel: { borderColor: PALETTE.primarySoft, borderBottomLeftRadius: 12, borderBottomRightRadius: 12, borderWidth: 1, borderTopWidth: 0, padding: 12 },
+  fallback: { gap: 8 },
   reason: { color: PALETTE.muted, fontSize: 13, lineHeight: 19 },
 });

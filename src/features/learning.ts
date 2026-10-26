@@ -1,6 +1,7 @@
 import { groupOf, logit, outcomeOf, sigmoid, type MarketGroup } from './markets';
 import { loadJson, saveJson } from '@/lib/storage';
 import type { PastResult } from './history';
+import type { PickInsight } from './insight';
 
 /**
  * The app learns on-device. Every analysed match is logged with the market-implied, stats-only
@@ -37,6 +38,8 @@ export type LoggedPick = {
   priceIsEstimate: boolean;
   tier: string;
   reasons: string[];
+  /** Form, head to head, table and team news gathered when the pick was made. */
+  insight?: PickInsight;
   outcome?: 'won' | 'lost' | 'void';
 };
 

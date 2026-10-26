@@ -70,10 +70,6 @@ function labelFor(key: string, fixture: FootballMatch): string {
   return key;
 }
 
-function signed(value: number) {
-  return `${value >= 0 ? '+' : ''}${value.toFixed(1)}`;
-}
-
 export function analyseFixture(
   fixture: FootballMatch,
   ratings: Ratings | undefined,
@@ -199,33 +195,25 @@ export function analyseFixture(
 
   // 5. Plain-language reasoning.
   if (marketXg) {
-    reasons.push(
-      `Bookmaker prices imply ${marketXg.home.toFixed(2)}–${marketXg.away.toFixed(2)} expected goals` +
-        (margin !== undefined ? ` (margin ${(margin * 100).toFixed(1)}% removed).` : '.'),
-    );
+    reasons.push(`Bookmaker odds point to about ${(marketXg.home + marketXg.away).toFixed(1)} goals in this match.`);
   }
   if (stat) {
-    reasons.push(
-      `Recent results rate this as ${stat.home.toFixed(2)}–${stat.away.toFixed(2)} expected goals` +
-        ` from ${statDepth.toFixed(1)}+ weighted matches per side.`,
-    );
+    reasons.push(`Recent results of both teams suggest about ${(stat.home + stat.away).toFixed(1)} goals.`);
   } else if (ratings) {
-    reasons.push('Too few recent results for one of these teams to rate them from stats.');
+    reasons.push('There are too few recent results for one of these teams to rate them from form.');
   }
   if (marketP && statP) {
     reasons.push(
       disagreement < 0.06
-        ? 'Bookmaker and stats models agree closely.'
-        : `Bookmaker and stats models differ by up to ${formatPercent(disagreement)} — treat with caution.`,
+        ? 'Bookmaker odds and recent form agree.'
+        : `Bookmaker odds and recent form disagree by up to ${formatPercent(disagreement)}, so extra caution.`,
     );
   }
   if (movement && Math.abs(movement.homePp) >= 2) {
-    reasons.push(
-      `Line movement: home win chance ${signed(movement.homePp)}pp since the opening price.`,
-    );
+    reasons.push(`Money has moved ${movement.homePp > 0 ? 'toward' : 'away from'} the home side since the odds opened.`);
   }
   if (movement?.overPp !== undefined && Math.abs(movement.overPp) >= 3) {
-    reasons.push(`Goals market has moved ${signed(movement.overPp)}pp toward ${movement.overPp > 0 ? 'over' : 'under'}.`);
+    reasons.push(`The goals market has shifted toward ${movement.overPp > 0 ? 'more' : 'fewer'} goals.`);
   }
 
   return {

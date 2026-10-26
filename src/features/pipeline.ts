@@ -1,6 +1,7 @@
 import { analyseFixture, toRecord, type MatchAnalysis } from './analysis';
 import type { MatchdayData } from './football-data';
 import { getRecentResults } from './history';
+import { fetchInsight } from './insight';
 import {
   DEFAULT_LEARNED,
   fitLearned,
@@ -49,6 +50,25 @@ function frozenPicks(stored: LoggedPick[], date: string): Pick[] {
   return stored
     .filter((pick) => pick.date === date)
     .map((pick) => ({ ...pick, conservative: pick.probability }));
+}
+
+/** Attaches the evidence behind each pick; picks that already have it are left untouched. */
+async function withInsights(
+  picks: Pick[],
+  data: MatchdayData,
+  analyses: Map<string, MatchAnalysis>,
+  signal?: AbortSignal,
+): Promise<Pick[]> {
+  return Promise.all(
+    picks.map(async (pick) => {
+      if (pick.insight) return pick;
+      const fixture = data.fixtures.find((item) => item.id === pick.fixtureId);
+      const analysis = analyses.get(pick.fixtureId);
+      if (!fixture || !analysis) return pick;
+      const insight = await fetchInsight(fixture, pick, analysis, signal).catch(() => undefined);
+      return insight ? { ...pick, insight } : pick;
+    }),
+  );
 }
 
 function compose(
@@ -107,6 +127,7 @@ export async function buildBrief(
   }
   const learned = fitLearned(settled.records);
   let brief = compose(data, ratings, learned, settled.records, settled.picks, locked, 'full', results.length);
+  brief = { ...brief, picks: await withInsights(brief.picks, data, brief.analyses, signal) };
 
   // A concurrent run (e.g. a quick refresh) may have locked the day while this one was computing.
   // Re-check so the first stored set always wins.
@@ -128,10 +149,13 @@ export async function buildBrief(
     return analysis ? [toRecord(fixture, analysis)] : [];
   });
   const mergedRecords = await logRecords(newRecords, settled.records);
-  if (!locked) {
+  const hadInsight = (id: string) =>
+    settled.picks.some((pick) => pick.date === data.date && pick.fixtureId === id && pick.insight);
+  const gainedInsight = locked && brief.picks.some((pick) => pick.insight && !hadInsight(pick.fixtureId));
+  if (!locked || gainedInsight) {
     const others = settled.picks.filter((pick) => pick.date !== data.date);
     await savePicks([...others, ...brief.picks.map(({ conservative: _c, edge: _e, ...pick }) => pick)]);
-    await saveJson(LOCKED_KEY, [...lockedDays, data.date].slice(-60));
+    if (!locked) await saveJson(LOCKED_KEY, [...lockedDays, data.date].slice(-60));
   }
   return { ...brief, track: trackRecord(mergedRecords, settled.picks) };
 }

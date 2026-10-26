@@ -4,8 +4,8 @@ import type { LoggedPick } from './learning';
 import { FAMILY_LABEL, familyOf, formatPercent, type MarketFamily } from './markets';
 
 const PICK_COUNT = 3;
-const MIN_CONSERVATIVE_PROBABILITY = 0.55;
-const MIN_PRICE = 1.3;
+const MIN_CONSERVATIVE_PROBABILITY = 0.7;
+const MIN_PRICE = 1.1;
 const ESTIMATED_MARGIN = 0.05;
 const SKIPPED = new Set(['draw', 'dc12']);
 
@@ -16,8 +16,8 @@ export type Pick = LoggedPick & {
 };
 
 function tierFor(conservative: number) {
-  if (conservative >= 0.75) return 'STRONG';
-  if (conservative >= 0.68) return 'SOLID';
+  if (conservative >= 0.85) return 'STRONG';
+  if (conservative >= 0.78) return 'SOLID';
   return 'LEAN';
 }
 
@@ -41,7 +41,7 @@ export function selectDailyPicks(
 
   for (const fixture of fixtures) {
     const analysis = analyses.get(fixture.id);
-    if (!analysis || !isUpcoming(fixture) || analysis.quality < 0.5) continue;
+    if (!analysis || !isUpcoming(fixture) || analysis.quality < 0.65) continue;
 
     for (const line of analysis.lines) {
       // ±0.5 handicaps are just "win" / "win or draw" under another name.
@@ -50,7 +50,7 @@ export function selectDailyPicks(
       const m = analysis.marketProbs?.[line.key];
       const s = analysis.statProbs?.[line.key];
       let conservative = line.probability;
-      if (m !== undefined && s !== undefined) conservative -= 0.5 * Math.abs(m - s);
+      if (m !== undefined && s !== undefined) conservative -= 0.75 * Math.abs(m - s);
       else if (m === undefined) conservative -= 0.06; // stats only: no market cross-check
       if (conservative < MIN_CONSERVATIVE_PROBABILITY) continue;
 
@@ -61,19 +61,13 @@ export function selectDailyPicks(
       const edge = line.edge;
       const score = conservative + (edge === undefined ? 0 : 0.3 * Math.max(-0.08, Math.min(0.12, edge)));
       const predicted = `${analysis.predictedScore.home}-${analysis.predictedScore.away}`;
-      const reasons = [...analysis.reasons.slice(0, 3)];
-      reasons.unshift(
-        `Most likely score ${predicted}, expected goals ${analysis.expectedGoals.home.toFixed(1)}–${analysis.expectedGoals.away.toFixed(1)}.`,
-      );
-      reasons.splice(1, 0,
-        `Model gives ${formatPercent(line.probability)} (fair price ${line.fairOdds.toFixed(2)})` +
-          (edge !== undefined
-            ? `; bookmaker pays ${odds.toFixed(2)} (${edge >= 0 ? '+' : ''}${(edge * 100).toFixed(1)}% expected value).`
-            : `; no bookmaker price in the feed, so ${odds.toFixed(2)} is an estimate.`),
-      );
-      if (m !== undefined && s !== undefined) {
-        reasons.push(`Bookmaker-implied ${formatPercent(m)} vs stats-implied ${formatPercent(s)}.`);
-      }
+      const reasons = [
+        `We rate this ${formatPercent(line.probability)} likely.`,
+        edge === undefined
+          ? `No bookmaker lists this exact bet, so ${odds.toFixed(2)} is our own estimate of a fair price.`
+          : `The bookmaker pays ${odds.toFixed(2)} for it.`,
+        ...analysis.reasons,
+      ];
 
       candidates.push({
         date,
