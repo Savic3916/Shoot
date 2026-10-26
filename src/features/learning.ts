@@ -30,6 +30,8 @@ export type LoggedPick = {
   competition: string;
   key: string;
   label: string;
+  family: string;
+  predictedScore: string;
   probability: number;
   odds: number;
   priceIsEstimate: boolean;

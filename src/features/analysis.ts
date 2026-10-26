@@ -25,6 +25,8 @@ export type MarketLine = {
 export type MatchAnalysis = {
   fixtureId: string;
   expectedGoals: { home: number; away: number };
+  /** Single most likely scoreline from the blended score model. */
+  predictedScore: { home: number; away: number };
   hasMarket: boolean;
   hasStats: boolean;
   /** Calibrated probabilities for every supported market. */
@@ -130,6 +132,14 @@ export function analyseFixture(
     ? blendMatrices(marketMatrix, statMatrix, learned.weightMarket)
     : (marketMatrix ?? statMatrix)!;
   const rawP = marketProbs(blended, totalLine, handicapLine);
+  let predictedScore = { home: 1, away: 1 };
+  let bestCell = -1;
+  blended.forEach((row, h) => row.forEach((p, a) => {
+    if (p > bestCell) {
+      bestCell = p;
+      predictedScore = { home: h, away: a };
+    }
+  }));
 
   // 3. Calibrate with what the app has learned from graded results.
   const probs: Record<string, number> = {};
@@ -220,6 +230,7 @@ export function analyseFixture(
 
   return {
     fixtureId: fixture.id,
+    predictedScore,
     expectedGoals: marketXg ?? { home: stat!.home, away: stat!.away },
     hasMarket: Boolean(marketMatrix),
     hasStats: Boolean(statMatrix),

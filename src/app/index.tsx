@@ -1,33 +1,13 @@
-import { useEffect, useMemo, useState } from 'react';
-import {
-  ActivityIndicator,
-  FlatList,
-  Pressable,
-  RefreshControl,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { useEffect, useState } from 'react';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { FixtureCard } from '@/components/fixture-card';
-import {
-  getMatchdayData,
-  type FootballMatch,
-  type MatchdayData,
-} from '@/features/football-data';
+import { PickCard } from '@/components/pick-card';
+import { PALETTE } from '@/constants/palette';
+import { getMatchdayData, type MatchdayData } from '@/features/football-data';
+import { formatPercent } from '@/features/markets';
 import { buildBrief, type Brief } from '@/features/pipeline';
-import { DailyPicks } from '@/components/daily-picks';
-
-const COLORS = {
-  background: '#FFFFFF',
-  panel: '#F5F6F8',
-  border: '#E4E6EA',
-  muted: '#6B7280',
-  text: '#141518',
-  accent: '#E41827',
-  amber: '#B45309',
-};
+import { combinedStats } from '@/features/picks';
 
 function getDayString(offset: number) {
   const day = new Date();
@@ -35,108 +15,14 @@ function getDayString(offset: number) {
   return `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
 }
 
-function ListHeader({
-  data,
-  brief,
-  dayOffset,
-  setDayOffset,
-  displayDate,
-  loading,
-  onRefresh,
-}: {
-  data?: MatchdayData;
-  brief?: Brief;
-  dayOffset: 0 | 1;
-  setDayOffset: (value: 0 | 1) => void;
-  displayDate: string;
-  loading: boolean;
-  onRefresh: () => void;
-}) {
-  return (
-    <View>
-      <View style={styles.topLine}>
-        <View style={styles.brandMark}><Text style={styles.brandIcon}>S</Text></View>
-        <View style={styles.brandWords}>
-          <Text style={styles.brand}>SIDELINE</Text>
-          <Text style={styles.brandSub}>MAJOR COMPETITIONS</Text>
-        </View>
-        <View style={styles.liveBadge}>
-          <View style={styles.liveDot} />
-          <Text style={styles.liveLabel}>
-            {data ? 'LIVE ODDS FEED' : 'LOADING FEED'}
-          </Text>
-        </View>
-      </View>
+type Loaded = { key: string; data?: MatchdayData; error?: string };
 
-      <View style={styles.hero}>
-        <Text style={styles.kicker}>THE MATCHDAY BRIEF</Text>
-        <Text style={styles.title}>One slip.{'\n'}No guarantees.</Text>
-        <Text style={styles.heroCopy}>
-          Bookmaker odds are scraped from the live scoreboard feed, converted into goal
-          expectations, and cross-checked against team ratings built from recent results.
-        </Text>
-        <View style={styles.heroMeta}>
-          <View style={styles.metaDot} />
-          <Text style={styles.metaText}>{displayDate.toUpperCase()}</Text>
-          <Text style={styles.metaDivider}>/</Text>
-          <Text style={styles.metaText}>{data?.fixtures.length ?? '—'} FIXTURES</Text>
-        </View>
-      </View>
-
-      <View style={styles.dayTabs}>
-        {([0, 1] as const).map((offset) => (
-          <Pressable
-            key={offset}
-            accessibilityRole="tab"
-            accessibilityState={{ selected: dayOffset === offset }}
-            onPress={() => setDayOffset(offset)}
-            style={[styles.dayTab, dayOffset === offset && styles.dayTabSelected]}>
-            <Text style={[styles.dayTabText, dayOffset === offset && styles.dayTabTextSelected]}>
-              {offset === 0 ? 'Today' : 'Tomorrow'}
-            </Text>
-          </Pressable>
-        ))}
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Refresh fixtures and scores"
-          onPress={onRefresh}
-          style={styles.refreshButton}>
-          {loading ? <ActivityIndicator size="small" color={COLORS.accent} /> : <Text style={styles.refreshText}>↻</Text>}
-        </Pressable>
-      </View>
-
-      {data?.coverageWarnings.length ? (
-        <Text style={styles.coverageWarning}>
-          Some competitions could not load: {data.coverageWarnings.slice(0, 3).join(' · ')}
-        </Text>
-      ) : null}
-
-      {data && <DailyPicks brief={brief} />}
-
-      <View style={styles.sectionHeader}>
-        <View>
-          <Text style={styles.sectionTitle}>All matches</Text>
-          <Text style={styles.sectionSubtitle}>
-            {loading ? 'Refreshing free score feed…' : `${data?.fixtures.length ?? 0} fixtures available`}
-          </Text>
-        </View>
-      </View>
-    </View>
-  );
-}
-
-function keyExtractor(match: FootballMatch) {
-  return match.id;
-}
-
-export default function MatchesScreen() {
+export default function PicksScreen() {
   const [dayOffset, setDayOffset] = useState<0 | 1>(0);
   const [refreshKey, setRefreshKey] = useState(0);
-  const [response, setResponse] = useState<{
-    key: string;
-    data?: MatchdayData;
-    error?: string;
-  }>();
+  const [loaded, setLoaded] = useState<Loaded>();
+  const [briefState, setBriefState] = useState<{ key: string; brief: Brief }>();
+
   const date = getDayString(dayOffset);
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
   const requestKey = `${date}:${timezone}:${refreshKey}`;
@@ -150,166 +36,171 @@ export default function MatchesScreen() {
     const controller = new AbortController();
     getMatchdayData(date, timezone, controller.signal)
       .then((data) => {
-        if (!controller.signal.aborted) setResponse({ key: requestKey, data });
+        if (!controller.signal.aborted) setLoaded({ key: requestKey, data });
       })
       .catch((reason: unknown) => {
-        if (!controller.signal.aborted) {
-          setResponse({
-            key: requestKey,
-            error: reason instanceof Error ? reason.message : 'Unable to load matches.',
-          });
-        }
+        if (controller.signal.aborted) return;
+        setLoaded({
+          key: requestKey,
+          error: reason instanceof Error ? reason.message : 'Unable to load matches.',
+        });
       });
     return () => controller.abort();
   }, [date, requestKey, timezone]);
 
-  const currentResponse = response?.key === requestKey ? response : undefined;
-  const data = currentResponse?.data;
-  const [briefState, setBriefState] = useState<{ key: string; brief: Brief }>();
-  const brief = briefState?.key === requestKey ? briefState.brief : undefined;
+  const current = loaded?.key === requestKey ? loaded : undefined;
+  const data = current?.data;
 
   useEffect(() => {
     if (!data) return;
     const controller = new AbortController();
-    buildBrief(
-      data,
-      (stage) => {
-        if (!controller.signal.aborted) setBriefState({ key: requestKey, brief: stage });
-      },
-      controller.signal,
-    )
-      .then((full) => {
-        if (!controller.signal.aborted) setBriefState({ key: requestKey, brief: full });
-      })
+    const publish = (brief: Brief) => {
+      if (!controller.signal.aborted) setBriefState({ key: requestKey, brief });
+    };
+    buildBrief(data, publish, controller.signal)
+      .then(publish)
       .catch(() => {
-        // The stage-1 bookmaker analysis stays on screen if the history download fails.
+        // The bookmaker-only stage stays on screen if the results download fails.
       });
     return () => controller.abort();
   }, [data, requestKey]);
-  const error = currentResponse?.error;
-  const loading = !currentResponse;
-  const fixtures = useMemo(
-    () => (data?.fixtures ?? []).slice().sort((a, b) => a.utcDate.localeCompare(b.utcDate)),
-    [data?.fixtures],
-  );
+
+  const brief = briefState?.key === requestKey ? briefState.brief : undefined;
+  const picks = brief?.picks ?? [];
+  const stats = picks.length > 1 ? combinedStats(picks) : undefined;
+  const track = brief?.track;
+  const refine = brief?.stage === 'market';
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
-      {error ? (
-        <View style={styles.errorWrap}>
-          <Text style={styles.errorTitle}>Free match feed unavailable</Text>
-          <Text style={styles.errorText}>{error}</Text>
-          <Text style={styles.errorText}>
-            Start or restart the app with npm start and check your internet connection. Fixtures
-            load directly from public ESPN scoreboards; no local server, token, or paid account is
-            required.
-          </Text>
-          <Pressable style={styles.retryButton} onPress={() => setRefreshKey((key) => key + 1)}>
-            <Text style={styles.retryText}>Retry live feed</Text>
+      <ScrollView contentContainerStyle={styles.content}>
+        <View style={styles.brandRow}>
+          <View style={styles.logo}><Text style={styles.logoText}>S</Text></View>
+          <Text style={styles.brand}>Shoot</Text>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Refresh picks"
+            onPress={() => setRefreshKey((key) => key + 1)}
+            hitSlop={10}
+            style={styles.refresh}>
+            <Text style={styles.refreshText}>Refresh</Text>
           </Pressable>
         </View>
-      ) : loading && !data ? (
-        <View style={styles.loadingWrap}>
-          <ActivityIndicator color={COLORS.accent} />
-          <Text style={styles.loadingText}>Loading matchday data…</Text>
-        </View>
-      ) : (
-        <FlatList
-          data={fixtures}
-          keyExtractor={keyExtractor}
-          contentContainerStyle={styles.content}
-          initialNumToRender={8}
-          maxToRenderPerBatch={8}
-          windowSize={7}
-          refreshControl={
-            <RefreshControl
-              refreshing={loading}
-              onRefresh={() => setRefreshKey((key) => key + 1)}
-              tintColor={COLORS.accent}
-              colors={[COLORS.accent]}
-            />
-          }
-          ListHeaderComponent={
-            <ListHeader
-              data={data}
-              brief={brief}
-              dayOffset={dayOffset}
-              setDayOffset={setDayOffset}
-              displayDate={displayDate}
-              loading={loading}
-              onRefresh={() => setRefreshKey((key) => key + 1)}
-            />
-          }
-          renderItem={({ item }) => (
-            <FixtureCard
-              fixture={item}
-              homeForm={data?.form[item.homeTeamId] ?? []}
-              awayForm={data?.form[item.awayTeamId] ?? []}
-              homePlayers={data?.players[item.homeTeamId] ?? []}
-              awayPlayers={data?.players[item.awayTeamId] ?? []}
-              analysis={brief?.analyses.get(item.id)}
-            />
-          )}
-          ListEmptyComponent={
-            <View style={styles.emptyState}>
-              <Text style={styles.emptyTitle}>No fixtures for this date</Text>
-              <Text style={styles.emptyCopy}>
-                No fixtures were returned for this local date. The free feed covers selected major
-                leagues and cups, not every competition worldwide.
+
+        <Text style={styles.title}>{dayOffset === 0 ? 'Today’s three' : 'Tomorrow’s three'}</Text>
+        <Text style={styles.subtitle}>
+          Three bets from different markets, each built from the model’s predicted match — not
+          just a home win.
+        </Text>
+
+        <View style={styles.tabs}>
+          {([0, 1] as const).map((offset) => (
+            <Pressable
+              key={offset}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: dayOffset === offset }}
+              onPress={() => setDayOffset(offset)}
+              style={[styles.tab, dayOffset === offset && styles.tabSelected]}>
+              <Text style={[styles.tabText, dayOffset === offset && styles.tabTextSelected]}>
+                {offset === 0 ? 'Today' : 'Tomorrow'}
               </Text>
-            </View>
-          }
-          ListFooterComponent={
-            <Text style={styles.footerNote}>
-              ESPN scoreboard + DraftKings prices · model estimates, not advice
-            </Text>
-          }
-        />
-      )}
+            </Pressable>
+          ))}
+        </View>
+        <Text style={styles.date}>{displayDate}</Text>
+
+        {current?.error ? (
+          <View style={styles.notice}>
+            <Text style={styles.noticeTitle}>Couldn’t reach the odds feed</Text>
+            <Text style={styles.noticeText}>{current.error}</Text>
+            <Pressable style={styles.button} onPress={() => setRefreshKey((key) => key + 1)}>
+              <Text style={styles.buttonText}>Try again</Text>
+            </Pressable>
+          </View>
+        ) : !brief ? (
+          <View style={styles.loading}>
+            <ActivityIndicator color={PALETTE.primary} />
+            <Text style={styles.loadingText}>Reading the odds…</Text>
+          </View>
+        ) : (
+          <>
+            {refine && (
+              <Text style={styles.refining}>
+                Still loading recent results to refine the model — these picks may change.
+              </Text>
+            )}
+            {picks.map((pick, index) => (
+              <PickCard key={pick.fixtureId} pick={pick} index={index} />
+            ))}
+
+            {!picks.length && (
+              <View style={styles.notice}>
+                <Text style={styles.noticeTitle}>No bet cleared the bar</Text>
+                <Text style={styles.noticeText}>
+                  Nothing had enough evidence and a worthwhile price. Skipping a day is better than
+                  forcing a bet.
+                </Text>
+              </View>
+            )}
+
+            {stats && (
+              <View style={styles.combined}>
+                <View>
+                  <Text style={styles.combinedLabel}>All three together</Text>
+                  <Text style={styles.combinedSub}>{formatPercent(stats.chance)} model chance</Text>
+                </View>
+                <Text style={styles.combinedOdds}>{stats.odds.toFixed(2)}</Text>
+              </View>
+            )}
+
+            {track && track.picksSettled > 0 && (
+              <Text style={styles.record}>
+                Track record: {track.picksWon} of {track.picksSettled} settled bets won — the model
+                expected {formatPercent(track.picksAverageProbability)}.
+              </Text>
+            )}
+          </>
+        )}
+
+        <Text style={styles.disclaimer}>
+          No bet is guaranteed; even a 75% pick loses one time in four. Estimated odds are
+          model-derived, not bookmaker quotes. Injuries and lineups are not included. For
+          information only — never stake more than you can afford to lose.
+        </Text>
+      </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: { backgroundColor: COLORS.background, flex: 1 },
-  content: { alignSelf: 'center', maxWidth: 620, paddingBottom: 38, paddingHorizontal: 18, width: '100%' },
-  topLine: { alignItems: 'center', flexDirection: 'row', paddingTop: 12 },
-  brandMark: { alignItems: 'center', backgroundColor: COLORS.accent, borderRadius: 11, height: 35, justifyContent: 'center', width: 35 },
-  brandIcon: { color: COLORS.background, fontSize: 19, fontWeight: '900' },
-  brandWords: { marginLeft: 10 },
-  brand: { color: COLORS.text, fontSize: 13, fontWeight: '900', letterSpacing: 1.8 },
-  brandSub: { color: COLORS.muted, fontSize: 8, fontWeight: '800', letterSpacing: 1.3, marginTop: 3 },
-  liveBadge: { alignItems: 'center', borderColor: COLORS.border, borderRadius: 20, borderWidth: 1, flexDirection: 'row', gap: 6, marginLeft: 'auto', paddingHorizontal: 10, paddingVertical: 7 },
-  liveDot: { backgroundColor: COLORS.accent, borderRadius: 4, height: 6, width: 6 },
-  liveLabel: { color: COLORS.muted, fontSize: 8, fontWeight: '800', letterSpacing: 0.8 },
-  hero: { paddingBottom: 19, paddingTop: 34 },
-  kicker: { color: COLORS.accent, fontSize: 10, fontWeight: '900', letterSpacing: 2 },
-  title: { color: COLORS.text, fontSize: 36, fontWeight: '800', letterSpacing: -1.5, lineHeight: 40, marginTop: 11 },
-  heroCopy: { color: COLORS.muted, fontSize: 12, lineHeight: 19, marginTop: 11, maxWidth: 360 },
-  heroMeta: { alignItems: 'center', flexDirection: 'row', gap: 8, marginTop: 17 },
-  metaDot: { backgroundColor: COLORS.accent, borderRadius: 3, height: 6, width: 6 },
-  metaText: { color: COLORS.text, fontSize: 9, fontWeight: '800', letterSpacing: 0.9 },
-  metaDivider: { color: COLORS.muted, fontSize: 11 },
-  dayTabs: { alignItems: 'center', backgroundColor: COLORS.panel, borderColor: COLORS.border, borderRadius: 14, borderWidth: 1, flexDirection: 'row', marginBottom: 17, padding: 3 },
-  dayTab: { alignItems: 'center', borderRadius: 10, flex: 1, paddingVertical: 10 },
-  dayTabSelected: { backgroundColor: '#E41827' },
-  dayTabText: { color: COLORS.muted, fontSize: 11, fontWeight: '700' },
-  dayTabTextSelected: { color: '#FFFFFF' },
-  refreshButton: { alignItems: 'center', borderLeftColor: COLORS.border, borderLeftWidth: 1, height: 32, justifyContent: 'center', width: 43 },
-  refreshText: { color: COLORS.accent, fontSize: 21 },
-  sectionHeader: { marginBottom: 12 },
-  sectionTitle: { color: COLORS.text, fontSize: 17, fontWeight: '800', letterSpacing: -0.3 },
-  sectionSubtitle: { color: COLORS.muted, fontSize: 10, marginTop: 4 },
-  errorWrap: { alignItems: 'center', flex: 1, justifyContent: 'center', padding: 25 },
-  errorTitle: { color: COLORS.text, fontSize: 16, fontWeight: '800' },
-  errorText: { color: COLORS.muted, fontSize: 11, lineHeight: 17, marginTop: 8, textAlign: 'center' },
-  retryButton: { backgroundColor: '#E41827', borderRadius: 10, marginTop: 14, paddingHorizontal: 16, paddingVertical: 10 },
-  retryText: { color: '#FFFFFF', fontSize: 11, fontWeight: '800' },
-  loadingWrap: { alignItems: 'center', flex: 1, gap: 12, justifyContent: 'center' },
-  loadingText: { color: COLORS.muted, fontSize: 11 },
-  emptyState: { alignItems: 'center', backgroundColor: COLORS.panel, borderColor: COLORS.border, borderRadius: 18, borderWidth: 1, padding: 20 },
-  emptyTitle: { color: COLORS.text, fontSize: 13, fontWeight: '800' },
-  emptyCopy: { color: COLORS.muted, fontSize: 10, lineHeight: 15, marginTop: 6, textAlign: 'center' },
-  footerNote: { color: COLORS.muted, fontSize: 9, paddingBottom: 15, paddingTop: 5, textAlign: 'center' },
-  coverageWarning: { color: COLORS.amber, fontSize: 9, lineHeight: 14, marginBottom: 12 },
+  safeArea: { backgroundColor: PALETTE.background, flex: 1 },
+  content: { alignSelf: 'center', maxWidth: 520, paddingBottom: 48, paddingHorizontal: 20, paddingTop: 12, width: '100%' },
+  brandRow: { alignItems: 'center', flexDirection: 'row', gap: 10 },
+  logo: { alignItems: 'center', backgroundColor: PALETTE.primary, borderRadius: 10, height: 32, justifyContent: 'center', width: 32 },
+  logoText: { color: '#FFFFFF', fontSize: 17, fontWeight: '800' },
+  brand: { color: PALETTE.ink, flex: 1, fontSize: 18, fontWeight: '700', letterSpacing: -0.3 },
+  refresh: { paddingVertical: 4 },
+  refreshText: { color: PALETTE.primary, fontSize: 14, fontWeight: '600' },
+  title: { color: PALETTE.ink, fontSize: 34, fontWeight: '800', letterSpacing: -1, marginTop: 30 },
+  subtitle: { color: PALETTE.muted, fontSize: 15, lineHeight: 22, marginTop: 8 },
+  tabs: { backgroundColor: PALETTE.surface, borderRadius: 12, flexDirection: 'row', marginTop: 22, padding: 3 },
+  tab: { alignItems: 'center', borderRadius: 10, flex: 1, paddingVertical: 10 },
+  tabSelected: { backgroundColor: PALETTE.background, shadowColor: '#14212B', shadowOffset: { height: 1, width: 0 }, shadowOpacity: 0.08, shadowRadius: 3 },
+  tabText: { color: PALETTE.muted, fontSize: 14, fontWeight: '600' },
+  tabTextSelected: { color: PALETTE.ink },
+  date: { color: PALETTE.faint, fontSize: 13, marginBottom: 18, marginTop: 12 },
+  loading: { alignItems: 'center', gap: 12, paddingVertical: 60 },
+  loadingText: { color: PALETTE.muted, fontSize: 14 },
+  refining: { backgroundColor: PALETTE.cautionSoft, borderRadius: 12, color: PALETTE.caution, fontSize: 13, lineHeight: 18, marginBottom: 14, overflow: 'hidden', padding: 12 },
+  notice: { backgroundColor: PALETTE.surface, borderRadius: 16, padding: 18 },
+  noticeTitle: { color: PALETTE.ink, fontSize: 16, fontWeight: '700' },
+  noticeText: { color: PALETTE.muted, fontSize: 14, lineHeight: 20, marginTop: 6 },
+  button: { alignSelf: 'flex-start', backgroundColor: PALETTE.primary, borderRadius: 10, marginTop: 14, paddingHorizontal: 18, paddingVertical: 10 },
+  buttonText: { color: '#FFFFFF', fontSize: 14, fontWeight: '600' },
+  combined: { alignItems: 'center', backgroundColor: PALETTE.primaryDeep, borderRadius: 20, flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6, padding: 20 },
+  combinedLabel: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
+  combinedSub: { color: '#B9D6CF', fontSize: 13, marginTop: 3 },
+  combinedOdds: { color: '#FFFFFF', fontSize: 32, fontWeight: '800', letterSpacing: -0.8 },
+  record: { color: PALETTE.ink, fontSize: 13, lineHeight: 19, marginTop: 16 },
+  disclaimer: { color: PALETTE.faint, fontSize: 12, lineHeight: 18, marginTop: 24 },
 });

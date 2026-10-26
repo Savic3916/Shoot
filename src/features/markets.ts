@@ -10,6 +10,23 @@ import {
 export type MarketGroup = 'result' | 'goals' | 'btts';
 
 export const OVER_LINES = [1.5, 2.5, 3.5];
+export const HANDICAP_LINES = [-2.5, -1.5, 1.5, 2.5];
+
+export type MarketFamily = 'result' | 'goals' | 'btts' | 'handicap';
+
+export const FAMILY_LABEL: Record<MarketFamily, string> = {
+  result: 'MATCH RESULT',
+  goals: 'TOTAL GOALS',
+  btts: 'BOTH TEAMS TO SCORE',
+  handicap: 'HANDICAP',
+};
+
+export function familyOf(key: string): MarketFamily {
+  if (key.startsWith('ah')) return 'handicap';
+  if (key === 'btts' || key === 'nobtts') return 'btts';
+  if (key.startsWith('o') || key.startsWith('u')) return 'goals';
+  return 'result';
+}
 
 export function overKey(line: number) {
   return `o${String(line).replace('.', '')}`;
@@ -49,10 +66,12 @@ export function marketProbs(
     probs[overKey(line)] = over;
     probs[underKey(line)] = 1 - over;
   }
-  if (handicapLine !== undefined) {
-    const home = handicapProb(matrix, handicapLine);
-    probs[`ah:${handicapLine}`] = home;
-    probs[`ahA:${-handicapLine}`] = 1 - home;
+  const handicaps = new Set(HANDICAP_LINES);
+  if (handicapLine !== undefined) handicaps.add(handicapLine);
+  for (const line of handicaps) {
+    const home = handicapProb(matrix, line);
+    probs[`ah:${line}`] = home;
+    probs[`ahA:${-line}`] = 1 - home;
   }
   return probs;
 }

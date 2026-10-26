@@ -1,20 +1,5 @@
 import { parseMarketOdds, type MarketOdds } from './odds';
 
-export type MarketOdd = {
-  market: string;
-  marketId: number | null;
-  selection: string;
-  decimal: number;
-  bookmaker: string;
-  updatedAt: string | null;
-};
-
-export type PlayerAbsence = {
-  name: string;
-  reason: string;
-  category: string;
-};
-
 export type FootballMatch = {
   id: string;
   utcDate: string;
@@ -26,37 +11,13 @@ export type FootballMatch = {
   awayTeamId: string;
   homeGoals: number | null;
   awayGoals: number | null;
-  odds: MarketOdd[];
   /** Bookmaker prices (1X2, totals, handicap) when the feed carries them. */
   market?: MarketOdds;
   leagueId: string;
-  unavailable: PlayerAbsence[];
-  lineupsPublished: boolean;
-  expectedPlayers: string[];
-};
-
-export type TeamResult = {
-  utcDate: string;
-  opponent: string;
-  goalsFor: number | null;
-  goalsAgainst: number | null;
-  outcome?: 'W' | 'D' | 'L';
-};
-
-export type PlayerSummary = {
-  id: string;
-  name: string;
-  appearances: number;
-  goals: number;
-  assists: number;
-  minutes: number;
-  averageRating: number | null;
 };
 
 export type MatchdayData = {
   fixtures: FootballMatch[];
-  form: Record<string, TeamResult[]>;
-  players: Record<string, PlayerSummary[]>;
   source: 'espn';
   date: string;
   coverageWarnings: string[];
@@ -74,17 +35,6 @@ function records(value: unknown): Record<string, unknown>[] {
 function parseScore(value: unknown): number | null {
   const score = typeof value === 'number' || typeof value === 'string' ? Number(value) : NaN;
   return Number.isFinite(score) && score >= 0 ? score : null;
-}
-
-function getForm(value: unknown, utcDate: string): TeamResult[] {
-  if (typeof value !== 'string') return [];
-  return (value.toUpperCase().match(/[WDL]/g) ?? []).map((outcome, index) => ({
-    utcDate: `${utcDate}#${index}`,
-    opponent: 'Recent form',
-    goalsFor: null,
-    goalsAgainst: null,
-    outcome: outcome as 'W' | 'D' | 'L',
-  }));
 }
 
 function competitionName(event: Record<string, unknown>) {
@@ -155,14 +105,8 @@ export function normalizeEvent(event: Record<string, unknown>) {
       awayTeamId: awayId,
       homeGoals: parseScore(homeEntry?.score),
       awayGoals: parseScore(awayEntry?.score),
-      odds: [],
       market: parseMarketOdds(records(competition?.odds)[0]),
-      unavailable: [],
-      lineupsPublished: false,
-      expectedPlayers: [],
     } satisfies FootballMatch,
-    homeForm: getForm(home?.form, utcDate),
-    awayForm: getForm(away?.form, utcDate),
   };
 }
 
@@ -222,20 +166,11 @@ export async function getMatchdayData(
   }
 
   const fixtures: FootballMatch[] = [];
-  const form: Record<string, TeamResult[]> = {};
-  const players: Record<string, PlayerSummary[]> = {};
   for (const batch of batches) {
     for (const event of batch?.events ?? []) {
       const normalized = normalizeEvent(event);
       if (!normalized || localDate(normalized.fixture.utcDate, timezone) !== date) continue;
-      const { fixture, homeForm, awayForm } = normalized;
-      fixtures.push(fixture);
-      if ((form[fixture.homeTeamId]?.length ?? 0) < homeForm.length) {
-        form[fixture.homeTeamId] = homeForm;
-      }
-      if ((form[fixture.awayTeamId]?.length ?? 0) < awayForm.length) {
-        form[fixture.awayTeamId] = awayForm;
-      }
+      fixtures.push(normalized.fixture);
     }
   }
   const uniqueFixtures = [...new Map(fixtures.map((fixture) => [fixture.id, fixture])).values()]
@@ -243,8 +178,6 @@ export async function getMatchdayData(
 
   return {
     fixtures: uniqueFixtures,
-    form,
-    players,
     source: 'espn',
     date,
     coverageWarnings: failures,

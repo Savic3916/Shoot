@@ -1,14 +1,13 @@
 import type { MatchAnalysis } from './analysis';
 import type { FootballMatch } from './football-data';
 import type { LoggedPick } from './learning';
-import { formatPercent } from './markets';
+import { FAMILY_LABEL, familyOf, formatPercent, type MarketFamily } from './markets';
 
 const PICK_COUNT = 3;
-const MIN_CONSERVATIVE_PROBABILITY = 0.6;
-const MIN_PRICE = 1.2;
+const MIN_CONSERVATIVE_PROBABILITY = 0.55;
+const MIN_PRICE = 1.3;
 const ESTIMATED_MARGIN = 0.05;
-const MAX_PER_KEY = 2;
-const PICKABLE = new Set(['home', 'away', 'dc1x', 'dcx2', 'o15', 'o25', 'u25', 'u35', 'btts']);
+const SKIPPED = new Set(['draw', 'dc12']);
 
 export type Pick = LoggedPick & {
   /** Probability after penalising model disagreement and thin evidence. */
@@ -45,8 +44,8 @@ export function selectDailyPicks(
     if (!analysis || !isUpcoming(fixture) || analysis.quality < 0.5) continue;
 
     for (const line of analysis.lines) {
-      const allowed = PICKABLE.has(line.key) || (line.key.startsWith('ah') && line.bookOdds);
-      if (!allowed) continue;
+      // ±0.5 handicaps are just "win" / "win or draw" under another name.
+      if (SKIPPED.has(line.key) || /^ahA?:-?0\.5$/.test(line.key)) continue;
 
       const m = analysis.marketProbs?.[line.key];
       const s = analysis.statProbs?.[line.key];
@@ -61,8 +60,12 @@ export function selectDailyPicks(
 
       const edge = line.edge;
       const score = conservative + (edge === undefined ? 0 : 0.3 * Math.max(-0.08, Math.min(0.12, edge)));
+      const predicted = `${analysis.predictedScore.home}-${analysis.predictedScore.away}`;
       const reasons = [...analysis.reasons.slice(0, 3)];
       reasons.unshift(
+        `Most likely score ${predicted}, expected goals ${analysis.expectedGoals.home.toFixed(1)}–${analysis.expectedGoals.away.toFixed(1)}.`,
+      );
+      reasons.splice(1, 0,
         `Model gives ${formatPercent(line.probability)} (fair price ${line.fairOdds.toFixed(2)})` +
           (edge !== undefined
             ? `; bookmaker pays ${odds.toFixed(2)} (${edge >= 0 ? '+' : ''}${(edge * 100).toFixed(1)}% expected value).`
@@ -81,6 +84,8 @@ export function selectDailyPicks(
         competition: fixture.competition,
         key: line.key,
         label: line.label,
+        family: FAMILY_LABEL[familyOf(line.key)],
+        predictedScore: predicted,
         probability: line.probability,
         odds,
         priceIsEstimate,
@@ -93,17 +98,23 @@ export function selectDailyPicks(
     }
   }
 
+  // One selection per market family (result, goals, both-teams, handicap) and per match, so the
+  // three bets are genuinely different views of the day rather than three "home win"s.
   candidates.sort((a, b) => b.score - a.score);
   const chosen: Candidate[] = [];
-  const perKey = new Map<string, number>();
-  for (const candidate of candidates) {
-    if (chosen.some((pick) => pick.fixtureId === candidate.fixtureId)) continue;
-    const family = candidate.key.replace(/^(ah|ahA).*/, 'ah');
-    if ((perKey.get(family) ?? 0) >= MAX_PER_KEY) continue;
-    perKey.set(family, (perKey.get(family) ?? 0) + 1);
-    chosen.push(candidate);
-    if (chosen.length === PICK_COUNT) break;
-  }
+  const families = new Set<MarketFamily>();
+  const take = (strict: boolean) => {
+    for (const candidate of candidates) {
+      if (chosen.length === PICK_COUNT) return;
+      const family = familyOf(candidate.key);
+      if (chosen.some((pick) => pick.fixtureId === candidate.fixtureId)) continue;
+      if (strict && families.has(family)) continue;
+      families.add(family);
+      chosen.push(candidate);
+    }
+  };
+  take(true);
+  take(false);
   return chosen.map(({ score: _score, ...pick }) => pick);
 }
 
