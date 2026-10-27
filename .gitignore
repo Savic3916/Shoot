@@ -42,3 +42,9 @@ example
 # generated native folders
 /ios
 /android
+
+# AI assistant files
+.claude/
+.copilot/
+.github/copilot-instructions.md
+.github/copilot/
