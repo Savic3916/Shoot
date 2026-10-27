@@ -1,6 +1,6 @@
 import type { MatchAnalysis } from './analysis';
 import type { FootballMatch } from './football-data';
-import { familyOf, formatPercent } from './markets';
+import { familyOf, formatPercent, outcomeOf } from './markets';
 
 /**
  * Evidence behind a pick, gathered from the same free ESPN feed: last five matches, head to
@@ -467,4 +467,29 @@ export async function fetchInsight(
     betReasons: betReasons(fixture, pick.key, home, away, h2h, analysis),
     factors: buildFactors(fixture, home, away, h2h, analysis),
   };
+}
+
+/**
+ * How often this exact bet would have won in each team's last five games, counting the home
+ * team's games from the home side and the away team's games from the away side. It is an
+ * independent check on the model: a bet the model loves but recent form contradicts is dropped.
+ */
+export function formSupport(key: string, insight: PickInsight): { hits: number; n: number } {
+  let hits = 0;
+  let n = 0;
+  for (const game of insight.home.games) {
+    const won = outcomeOf(key, game.goalsFor, game.goalsAgainst);
+    if (won !== null) {
+      n += 1;
+      if (won) hits += 1;
+    }
+  }
+  for (const game of insight.away.games) {
+    const won = outcomeOf(key, game.goalsAgainst, game.goalsFor);
+    if (won !== null) {
+      n += 1;
+      if (won) hits += 1;
+    }
+  }
+  return { hits, n };
 }

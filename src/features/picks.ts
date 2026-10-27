@@ -5,6 +5,8 @@ import { FAMILY_LABEL, familyOf, formatPercent, type MarketFamily } from './mark
 
 const PICK_COUNT = 3;
 const MIN_CONSERVATIVE_PROBABILITY = 0.7;
+const SHORTLIST_SIZE = 14;
+const MAX_PER_FIXTURE = 2;
 const MIN_PRICE = 1.1;
 const ESTIMATED_MARGIN = 0.05;
 const SKIPPED = new Set(['draw', 'dc12']);
@@ -15,33 +17,34 @@ export type Pick = LoggedPick & {
   edge?: number;
 };
 
-function tierFor(conservative: number) {
+export function tierFor(conservative: number) {
   if (conservative >= 0.85) return 'STRONG';
   if (conservative >= 0.78) return 'SOLID';
   return 'LEAN';
 }
 
-function isUpcoming(fixture: FootballMatch) {
-  return fixture.status === 'NOT STARTED' && Date.parse(fixture.utcDate) > Date.now();
+export type Candidate = Pick & { score: number };
+
+export function scoreOf(conservative: number, edge?: number) {
+  return conservative + (edge === undefined ? 0 : 0.3 * Math.max(-0.08, Math.min(0.12, edge)));
 }
 
 /**
- * Picks the three strongest selections of the day. A selection scores on its calibrated
- * probability, reduced when the bookmaker and stats models disagree or only one source exists,
- * and nudged up when the bookmaker price offers value. No selection is guaranteed to win:
- * the output is the best-supported option available, with the evidence attached.
+ * Stage one of selection: every match of the day is considered, whatever its kick-off time, and
+ * the most probable selections are shortlisted. A selection scores on its calibrated probability,
+ * reduced when the bookmaker and stats models disagree or only one source exists. The shortlist
+ * is then checked against each team's recent games before the final three are chosen.
  */
-export function selectDailyPicks(
+export function rankCandidates(
   date: string,
   fixtures: FootballMatch[],
   analyses: Map<string, MatchAnalysis>,
-): Pick[] {
-  type Candidate = Pick & { score: number };
+): Candidate[] {
   const candidates: Candidate[] = [];
 
   for (const fixture of fixtures) {
     const analysis = analyses.get(fixture.id);
-    if (!analysis || !isUpcoming(fixture) || analysis.quality < 0.65) continue;
+    if (!analysis || analysis.quality < 0.5) continue;
 
     for (const line of analysis.lines) {
       // ±0.5 handicaps are just "win" / "win or draw" under another name.
@@ -59,7 +62,7 @@ export function selectDailyPicks(
       if (odds < MIN_PRICE) continue;
 
       const edge = line.edge;
-      const score = conservative + (edge === undefined ? 0 : 0.3 * Math.max(-0.08, Math.min(0.12, edge)));
+      const score = scoreOf(conservative, edge);
       const predicted = `${analysis.predictedScore.home}-${analysis.predictedScore.away}`;
       const reasons = [
         `We rate this ${formatPercent(line.probability)} likely.`,
@@ -92,13 +95,29 @@ export function selectDailyPicks(
     }
   }
 
-  // One selection per market family (result, goals, both-teams, handicap) and per match, so the
-  // three bets are genuinely different views of the day rather than three "home win"s.
   candidates.sort((a, b) => b.score - a.score);
+  const shortlist: Candidate[] = [];
+  const perFixture = new Map<string, number>();
+  for (const candidate of candidates) {
+    const used = perFixture.get(candidate.fixtureId) ?? 0;
+    if (used >= MAX_PER_FIXTURE) continue;
+    perFixture.set(candidate.fixtureId, used + 1);
+    shortlist.push(candidate);
+    if (shortlist.length === SHORTLIST_SIZE) break;
+  }
+  return shortlist;
+}
+
+/**
+ * Final selection: one bet per market family (result, goals, both-teams, handicap) and per
+ * match, so the three bets are genuinely different views of the day rather than three "home win"s.
+ */
+export function choosePicks(candidates: Candidate[]): Pick[] {
+  const sorted = [...candidates].sort((a, b) => b.score - a.score);
   const chosen: Candidate[] = [];
   const families = new Set<MarketFamily>();
   const take = (strict: boolean) => {
-    for (const candidate of candidates) {
+    for (const candidate of sorted) {
       if (chosen.length === PICK_COUNT) return;
       const family = familyOf(candidate.key);
       if (chosen.some((pick) => pick.fixtureId === candidate.fixtureId)) continue;

@@ -32,7 +32,7 @@ export function PickCard({ pick, index }: { pick: Pick; index: number }) {
 
       <Text style={styles.selection}>{pick.label}</Text>
       <Text style={styles.match}>{pick.home} vs {pick.away}</Text>
-      <Text style={styles.meta}>{pick.competition} · {kickoff}</Text>
+      <Text style={styles.meta}>{pick.competition} · {kickoff}{Date.parse(pick.utcDate) <= Date.now() ? ' · already started' : ''}</Text>
 
       <View style={styles.predicted}>
         <Text style={styles.predictedLabel}>Predicted score</Text>

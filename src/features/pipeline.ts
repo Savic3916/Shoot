@@ -1,7 +1,7 @@
 import { analyseFixture, toRecord, type MatchAnalysis } from './analysis';
-import type { MatchdayData } from './football-data';
+import type { FootballMatch, MatchdayData } from './football-data';
 import { getRecentResults } from './history';
-import { fetchInsight } from './insight';
+import { fetchInsight, formSupport } from './insight';
 import {
   DEFAULT_LEARNED,
   fitLearned,
@@ -17,7 +17,7 @@ import {
   type MatchRecord,
   type TrackRecord,
 } from './learning';
-import { selectDailyPicks, type Pick } from './picks';
+import { choosePicks, rankCandidates, scoreOf, tierFor, type Candidate, type Pick } from './picks';
 import { fitRatings, type Ratings } from './ratings';
 import { loadJson, saveJson } from '@/lib/storage';
 
@@ -37,10 +37,16 @@ export type Brief = {
   historyMatches: number;
 };
 
+function hasStarted(fixture: FootballMatch) {
+  return fixture.status !== 'NOT STARTED' || Date.parse(fixture.utcDate) <= Date.now();
+}
+
 function analyseAll(data: MatchdayData, ratings: Ratings | undefined, learned: Learned) {
   const analyses = new Map<string, MatchAnalysis>();
   for (const fixture of data.fixtures) {
-    const analysis = analyseFixture(fixture, ratings, learned);
+    // Prices of a match in play or finished reflect the score, not the pre-match picture, so
+    // those matches are analysed from team ratings alone. Kick-off time never excludes a match.
+    const analysis = analyseFixture(hasStarted(fixture) ? { ...fixture, market: undefined } : fixture, ratings, learned);
     if (analysis) analyses.set(fixture.id, analysis);
   }
   return analyses;
@@ -71,6 +77,48 @@ async function withInsights(
   );
 }
 
+/**
+ * Shortlists the most probable bets of the day, gathers each team's recent form, head to head and
+ * news for every one, and keeps only bets that recent form does not contradict. Odds of the final
+ * three therefore rest on two independent views: the model and what actually happened lately.
+ */
+async function selectVerifiedPicks(
+  data: MatchdayData,
+  analyses: Map<string, MatchAnalysis>,
+  signal?: AbortSignal,
+): Promise<Pick[]> {
+  const shortlist = rankCandidates(data.date, data.fixtures, analyses);
+  const checked = await Promise.all(
+    shortlist.map(async (candidate): Promise<Candidate | undefined> => {
+      const fixture = data.fixtures.find((item) => item.id === candidate.fixtureId);
+      const analysis = analyses.get(candidate.fixtureId);
+      if (!fixture || !analysis) return undefined;
+      const insight = await fetchInsight(fixture, candidate, analysis, signal).catch(() => undefined);
+      if (!insight) {
+        const conservative = candidate.conservative - 0.04; // unverified against recent form
+        return { ...candidate, conservative, tier: tierFor(conservative), score: scoreOf(conservative, candidate.edge) };
+      }
+      const { hits, n } = formSupport(candidate.key, insight);
+      let conservative = candidate.conservative;
+      if (n >= 6) {
+        const support = (hits + 1) / (n + 2);
+        if (support < 0.55) return undefined; // recent form contradicts the model
+        conservative = 0.75 * conservative + 0.25 * support;
+        insight.betReasons.splice(
+          Math.max(0, insight.betReasons.length - 1),
+          0,
+          `Check: this exact bet would have won in ${hits} of the last ${n} games played by these two teams.`,
+        );
+      } else {
+        conservative -= 0.02; // too little recent data to confirm
+      }
+      if (conservative < 0.7) return undefined;
+      return { ...candidate, insight, conservative, tier: tierFor(conservative), score: scoreOf(conservative, candidate.edge) };
+    }),
+  );
+  return choosePicks(checked.filter((item): item is Candidate => item !== undefined));
+}
+
 function compose(
   data: MatchdayData,
   ratings: Ratings | undefined,
@@ -84,11 +132,7 @@ function compose(
   const analyses = analyseAll(data, ratings, learned);
   // Once a day's picks exist they are final. Before the full analysis there are none to show,
   // so a preliminary pick can never appear and then change.
-  const picks = locked
-    ? frozenPicks(stored, data.date)
-    : stage === 'full'
-      ? selectDailyPicks(data.date, data.fixtures, analyses)
-      : [];
+  const picks = locked ? frozenPicks(stored, data.date) : [];
   return {
     analyses,
     picks,
@@ -127,7 +171,11 @@ export async function buildBrief(
   }
   const learned = fitLearned(settled.records);
   let brief = compose(data, ratings, learned, settled.records, settled.picks, locked, 'full', results.length);
-  brief = { ...brief, picks: await withInsights(brief.picks, data, brief.analyses, signal) };
+  if (locked) {
+    brief = { ...brief, picks: await withInsights(brief.picks, data, brief.analyses, signal) };
+  } else {
+    brief = { ...brief, picks: await selectVerifiedPicks(data, brief.analyses, signal) };
+  }
 
   // A concurrent run (e.g. a quick refresh) may have locked the day while this one was computing.
   // Re-check so the first stored set always wins.
