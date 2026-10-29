@@ -52,6 +52,8 @@ export function rankCandidates(
       // +/-0.5 handicaps are "win" / "win or draw" renamed. +/-1.5 handicaps won only 30% when a
       // red card appeared in testing, so they are left out entirely.
       if (SKIPPED.has(line.key) || /^ahA?:-?(0|1)\.5$/.test(line.key)) continue;
+      // Team-to-score markets won only ~65% when the model said ~85% in testing; draw-no-bet is unproven.
+      if (/^(hs|as)\d$|^dnb/.test(line.key)) continue;
 
       const m = analysis.marketProbs?.[line.key];
       const s = analysis.statProbs?.[line.key];
