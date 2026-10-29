@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Logo } from '@/components/logo';
 import { PickCard } from '@/components/pick-card';
+import { TennisSection } from '@/components/tennis-section';
 import { PALETTE } from '@/constants/palette';
 import { getMatchdayData, type MatchdayData } from '@/features/football-data';
 import { formatPercent } from '@/features/markets';
@@ -17,8 +18,14 @@ function getDayString(offset: number) {
 }
 
 type Loaded = { key: string; data?: MatchdayData; error?: string };
+type Sport = 'football' | 'tennis';
+const SPORTS: { id: Sport; label: string }[] = [
+  { id: 'football', label: 'Football' },
+  { id: 'tennis', label: 'Tennis' },
+];
 
 export default function PicksScreen() {
+  const [sport, setSport] = useState<Sport>('football');
   const [dayOffset, setDayOffset] = useState<0 | 1>(0);
   const [refreshKey, setRefreshKey] = useState(0);
   const [loaded, setLoaded] = useState<Loaded>();
@@ -34,6 +41,7 @@ export default function PicksScreen() {
   });
 
   useEffect(() => {
+    if (sport !== 'football') return;
     const controller = new AbortController();
     getMatchdayData(date, timezone, controller.signal)
       .then((data) => {
@@ -47,7 +55,7 @@ export default function PicksScreen() {
         });
       });
     return () => controller.abort();
-  }, [date, requestKey, timezone]);
+  }, [date, requestKey, sport, timezone]);
 
   const current = loaded?.key === requestKey ? loaded : undefined;
   const data = current?.data;
@@ -90,10 +98,28 @@ export default function PicksScreen() {
           </Pressable>
         </View>
 
-        <Text style={styles.title}>{dayOffset === 0 ? 'Today’s three' : 'Tomorrow’s three'}</Text>
+        <View style={styles.sports}>
+          {SPORTS.map((item) => (
+            <Pressable
+              key={item.id}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: sport === item.id }}
+              onPress={() => setSport(item.id)}
+              style={[styles.sport, sport === item.id && styles.sportSelected]}>
+              <Text style={[styles.sportText, sport === item.id && styles.sportTextSelected]}>{item.label}</Text>
+            </Pressable>
+          ))}
+        </View>
+
+        <Text style={styles.title}>
+          {sport === 'tennis'
+            ? dayOffset === 0 ? 'Today’s tennis' : 'Tomorrow’s tennis'
+            : dayOffset === 0 ? 'Today’s three' : 'Tomorrow’s three'}
+        </Text>
         <Text style={styles.subtitle}>
-          Three bets a day, each from a different market and chosen for how likely it is to land.
-          Once set, they never change.
+          {sport === 'tennis'
+            ? 'Set bets on heavy favourites: the player only has to win one set. Offered only when every check passes — on many days there is none. Once set, they never change.'
+            : 'Three bets a day, each from a different market and chosen for how likely it is to land. Once set, they never change.'}
         </Text>
 
         <View style={styles.tabs}>
@@ -112,61 +138,74 @@ export default function PicksScreen() {
         </View>
         <Text style={styles.date}>{displayDate}</Text>
 
-        {current?.error ? (
-          <View style={styles.notice}>
-            <Text style={styles.noticeTitle}>Couldn’t reach the odds feed</Text>
-            <Text style={styles.noticeText}>{current.error}</Text>
-            <Pressable style={styles.button} onPress={() => setRefreshKey((key) => key + 1)}>
-              <Text style={styles.buttonText}>Try again</Text>
-            </Pressable>
-          </View>
-        ) : !brief?.picksReady ? (
-          <View style={styles.loading}>
-            <ActivityIndicator color={PALETTE.primary} />
-            <Text style={styles.loadingText}>
-              {brief ? 'Analysing recent results…' : 'Reading the odds…'}
-            </Text>
-          </View>
+        {sport === 'tennis' ? (
+          <TennisSection
+            date={date}
+            timezone={timezone}
+            refreshKey={refreshKey}
+            onRetry={() => setRefreshKey((key) => key + 1)}
+          />
         ) : (
           <>
-            {picks.map((pick, index) => (
-              <PickCard key={pick.fixtureId} pick={pick} index={index} />
-            ))}
-
-            {!picks.length && (
-              <View style={styles.notice}>
-                <Text style={styles.noticeTitle}>No bet cleared the bar</Text>
-                <Text style={styles.noticeText}>
-                  Nothing had enough evidence and a worthwhile price. Skipping a day is better than
-                  forcing a bet.
-                </Text>
-              </View>
-            )}
-
-            {stats && (
-              <View style={styles.combined}>
-                <View>
-                  <Text style={styles.combinedLabel}>All three together</Text>
-                  <Text style={styles.combinedSub}>{formatPercent(stats.chance)} model chance</Text>
-                </View>
-                <Text style={styles.combinedOdds}>{stats.odds.toFixed(2)}</Text>
-              </View>
-            )}
-
-            {track && track.picksSettled > 0 && (
-              <Text style={styles.record}>
-                Track record: {track.picksWon} of {track.picksSettled} settled bets won — the model
-                expected {formatPercent(track.picksAverageProbability)}.
+          {current?.error ? (
+            <View style={styles.notice}>
+              <Text style={styles.noticeTitle}>Couldn’t reach the odds feed</Text>
+              <Text style={styles.noticeText}>{current.error}</Text>
+              <Pressable style={styles.button} onPress={() => setRefreshKey((key) => key + 1)}>
+                <Text style={styles.buttonText}>Try again</Text>
+              </Pressable>
+            </View>
+          ) : !brief?.picksReady ? (
+            <View style={styles.loading}>
+              <ActivityIndicator color={PALETTE.primary} />
+              <Text style={styles.loadingText}>
+                {brief ? 'Analysing recent results…' : 'Reading the odds…'}
               </Text>
-            )}
+            </View>
+          ) : (
+            <>
+              {picks.map((pick, index) => (
+                <PickCard key={pick.fixtureId} pick={pick} index={index} />
+              ))}
+
+              {!picks.length && (
+                <View style={styles.notice}>
+                  <Text style={styles.noticeTitle}>No bet cleared the bar</Text>
+                  <Text style={styles.noticeText}>
+                    Nothing had enough evidence and a worthwhile price. Skipping a day is better than
+                    forcing a bet.
+                  </Text>
+                </View>
+              )}
+
+              {stats && (
+                <View style={styles.combined}>
+                  <View>
+                    <Text style={styles.combinedLabel}>All three together</Text>
+                    <Text style={styles.combinedSub}>{formatPercent(stats.chance)} model chance</Text>
+                  </View>
+                  <Text style={styles.combinedOdds}>{stats.odds.toFixed(2)}</Text>
+                </View>
+              )}
+
+              {track && track.picksSettled > 0 && (
+                <Text style={styles.record}>
+                  Track record: {track.picksWon} of {track.picksSettled} settled bets won — the model
+                  expected {formatPercent(track.picksAverageProbability)}.
+                </Text>
+              )}
+            </>
+          )}
           </>
         )}
 
-        <Text style={styles.disclaimer}>
+        {sport === 'football' && (
+          <Text style={styles.disclaimer}>
           No bet is guaranteed; even a 75% pick loses one time in four. Estimated odds are
           model-derived, not bookmaker quotes. Injuries and lineups are not included. For
           information only — never stake more than you can afford to lose.
-        </Text>
+          </Text>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -179,7 +218,12 @@ const styles = StyleSheet.create({
   logoWrap: { flex: 1 },
   refresh: { paddingVertical: 4 },
   refreshText: { color: PALETTE.primary, fontSize: 14, fontWeight: '600' },
-  title: { color: PALETTE.ink, fontSize: 34, fontWeight: '800', letterSpacing: -1, marginTop: 30 },
+  sports: { backgroundColor: PALETTE.primarySoft, borderRadius: 14, flexDirection: 'row', marginTop: 22, padding: 3 },
+  sport: { alignItems: 'center', borderRadius: 11, flex: 1, paddingVertical: 11 },
+  sportSelected: { backgroundColor: PALETTE.primary },
+  sportText: { color: PALETTE.primary, fontSize: 14, fontWeight: '700' },
+  sportTextSelected: { color: '#FFFFFF' },
+  title: { color: PALETTE.ink, fontSize: 34, fontWeight: '800', letterSpacing: -1, marginTop: 22 },
   subtitle: { color: PALETTE.muted, fontSize: 15, lineHeight: 22, marginTop: 8 },
   tabs: { backgroundColor: PALETTE.surface, borderRadius: 12, flexDirection: 'row', marginTop: 22, padding: 3 },
   tab: { alignItems: 'center', borderRadius: 10, flex: 1, paddingVertical: 10 },

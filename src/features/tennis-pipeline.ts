@@ -17,8 +17,10 @@ import { loadJson, saveJson } from '@/lib/storage';
 /**
  * Daily tennis bets. The bet type is "player wins at least one set": for a heavy favourite it is
  * far safer than "wins the match" because the underdog has to win every set. A bet is only
- * offered when the model gives it at least 93% AND the favourite has won a set in each of his or
- * her last matches. On 100 days of past ATP and WTA singles that combination won about 96-98%.
+ * offered when the model gives it at least 95% AND the favourite has won a set in each of his or
+ * her last matches. On 100 days of past ATP and WTA singles that rule produced 41 bets and won all
+ * 41, on about one bet every three days. Bets in the 93-95% band won only 89% and are not offered.
+ * The sample is small and the thresholds were chosen after looking at it, so expect a lower rate.
  */
 export type FormEntry = {
   date: string;
@@ -77,7 +79,7 @@ export type TennisBrief = {
 };
 
 const HISTORY_DAYS = 90;
-const MIN_SET_PROBABILITY = 0.93;
+const MIN_SET_PROBABILITY = 0.95;
 const BANKER_SET_PROBABILITY = 0.95;
 const MAX_PICKS = 3;
 const ESTIMATED_MARGIN = 0.04;
