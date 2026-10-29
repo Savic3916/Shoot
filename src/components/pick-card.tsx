@@ -32,8 +32,13 @@ export function PickCard({ pick, index }: { pick: Pick; index: number }) {
       </View>
 
       <Text style={styles.selection}>{pick.label}</Text>
-      <Text style={styles.match}>{pick.home} vs {pick.away}</Text>
-      <Text style={styles.meta}>{pick.country ?? countryOf(pick.competition)} · {pick.competition} · {kickoff}{Date.parse(pick.utcDate) <= Date.now() ? ' · already started' : ''}</Text>
+      <View style={styles.matchRow}>
+        <Text style={styles.match}>{pick.home} vs {pick.away}</Text>
+        <View style={styles.country}>
+          <Text style={styles.countryText}>{pick.country ?? countryOf(pick.competition)}</Text>
+        </View>
+      </View>
+      <Text style={styles.meta}>{kickoff}{Date.parse(pick.utcDate) <= Date.now() ? ' · already started' : ''}</Text>
 
       <View style={styles.predicted}>
         <Text style={styles.predictedLabel}>Predicted score</Text>
@@ -98,7 +103,10 @@ const styles = StyleSheet.create({
   price: { color: PALETTE.primary, fontSize: 28, fontWeight: '800', letterSpacing: -0.5 },
   priceNote: { color: PALETTE.faint, fontSize: 11, marginTop: -2 },
   selection: { color: PALETTE.ink, fontSize: 22, fontWeight: '700', letterSpacing: -0.4, marginTop: 14 },
-  match: { color: PALETTE.ink, fontSize: 15, marginTop: 4 },
+  matchRow: { alignItems: 'center', flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 },
+  match: { color: PALETTE.ink, fontSize: 15 },
+  country: { backgroundColor: PALETTE.primarySoft, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 3 },
+  countryText: { color: PALETTE.primary, fontSize: 12, fontWeight: '700' },
   meta: { color: PALETTE.muted, fontSize: 13, marginTop: 2 },
   predicted: { alignItems: 'center', backgroundColor: PALETTE.surface, borderRadius: 12, flexDirection: 'row', justifyContent: 'space-between', marginTop: 16, paddingHorizontal: 14, paddingVertical: 10 },
   predictedLabel: { color: PALETTE.muted, fontSize: 13 },

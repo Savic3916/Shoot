@@ -127,15 +127,3 @@ export function countryOf(competition: string): string {
   }
   return 'Other competitions';
 }
-
-/** Matches analysed per country or region (covered competitions only), largest first. */
-export function summariseCoverage(fixtures: FootballMatch[]) {
-  const counts = new Map<string, number>();
-  for (const fixture of fixtures.filter(isMajorCompetition)) {
-    const country = fixture.country;
-    counts.set(country, (counts.get(country) ?? 0) + 1);
-  }
-  return [...counts.entries()]
-    .map(([country, matches]) => ({ country, matches }))
-    .sort((a, b) => b.matches - a.matches);
-}

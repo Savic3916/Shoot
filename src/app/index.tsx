@@ -129,20 +129,6 @@ export default function PicksScreen() {
           </View>
         ) : (
           <>
-            {brief.coverage.length > 0 && (
-              <View style={styles.coverage}>
-                <Text style={styles.coverageTitle}>
-                  {brief.coverage.reduce((sum, item) => sum + item.matches, 0)} matches analysed across
-                </Text>
-                <View style={styles.chips}>
-                  {brief.coverage.slice(0, 12).map((item) => (
-                    <View key={item.country} style={styles.chip}>
-                      <Text style={styles.chipText}>{item.country} · {item.matches}</Text>
-                    </View>
-                  ))}
-                </View>
-              </View>
-            )}
             {picks.map((pick, index) => (
               <PickCard key={pick.fixtureId} pick={pick} index={index} />
             ))}
@@ -208,11 +194,6 @@ const styles = StyleSheet.create({
   noticeText: { color: PALETTE.muted, fontSize: 14, lineHeight: 20, marginTop: 6 },
   button: { alignSelf: 'flex-start', backgroundColor: PALETTE.primary, borderRadius: 10, marginTop: 14, paddingHorizontal: 18, paddingVertical: 10 },
   buttonText: { color: '#FFFFFF', fontSize: 14, fontWeight: '600' },
-  coverage: { backgroundColor: PALETTE.surface, borderRadius: 16, marginBottom: 14, padding: 14 },
-  coverageTitle: { color: PALETTE.muted, fontSize: 13, fontWeight: '600' },
-  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 10 },
-  chip: { backgroundColor: PALETTE.background, borderColor: PALETTE.hairline, borderRadius: 999, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 5 },
-  chipText: { color: PALETTE.ink, fontSize: 12, fontWeight: '600' },
   combined: { alignItems: 'center', backgroundColor: PALETTE.primaryDeep, borderRadius: 20, flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6, padding: 20 },
   combinedLabel: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
   combinedSub: { color: '#B9D6CF', fontSize: 13, marginTop: 3 },
