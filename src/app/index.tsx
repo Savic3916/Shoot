@@ -73,7 +73,7 @@ export default function PicksScreen() {
 
   const brief = briefState?.key === requestKey ? briefState.brief : undefined;
   const picks = brief?.picks ?? [];
-  const stats = picks.length > 1 ? combinedStats(picks) : undefined;
+  const stats = picks.length > 0 ? combinedStats(picks) : undefined;
   const track = brief?.track;
 
   return (
@@ -91,10 +91,11 @@ export default function PicksScreen() {
           </Pressable>
         </View>
 
-        <Text style={styles.title}>{dayOffset === 0 ? 'Today’s three' : 'Tomorrow’s three'}</Text>
+        <Text style={styles.title}>{dayOffset === 0 ? 'Today’s slip' : 'Tomorrow’s slip'}</Text>
         <Text style={styles.subtitle}>
-          Three bets a day, each from a different market and chosen for how likely it is to land.
-          Once set, they never change.
+          Games from all over the world, combined into one slip that pays about 1.40 or more using as
+          few picks as possible — fewer picks means a better chance that every one wins. Once set, it
+          never changes.
         </Text>
 
         <View style={styles.tabs}>
@@ -147,14 +148,14 @@ export default function PicksScreen() {
             {stats && (
               <View style={styles.combined}>
                 <View>
-                  <Text style={styles.combinedLabel}>All three together</Text>
-                  <Text style={styles.combinedSub}>{formatPercent(stats.chance)} model chance</Text>
+                  <Text style={styles.combinedLabel}>Whole slip ({picks.length} {picks.length === 1 ? 'pick' : 'picks'})</Text>
+                  <Text style={styles.combinedSub}>{formatPercent(stats.chance)} chance every pick wins</Text>
                 </View>
                 <Text style={styles.combinedOdds}>{stats.odds.toFixed(2)}</Text>
               </View>
             )}
 
-            {stats && <StakePanel odds={stats.odds} chance={stats.chance} />}
+            {stats && <StakePanel odds={stats.odds} chance={stats.chance} legs={picks.length} />}
 
             {track && track.picksSettled > 0 && (
               <Text style={styles.record}>

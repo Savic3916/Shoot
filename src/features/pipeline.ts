@@ -17,9 +17,9 @@ import {
   type MatchRecord,
   type TrackRecord,
 } from './learning';
-import { choosePicks, rankCandidates, scoreOf, tierFor, type Candidate, type Pick } from './picks';
+import { buildSlip, rankCandidates, scoreOf, tierFor, type Candidate, type Pick } from './picks';
 import { fitRatings, type Ratings } from './ratings';
-import { isMajorCompetition } from './competitions';
+import { isEligibleCompetition } from './competitions';
 import { assessMatch, buildTeamHistory, type TeamHistory } from './risk';
 import { loadJson, saveJson } from '@/lib/storage';
 
@@ -97,8 +97,8 @@ async function selectVerifiedPicks(
     data.date,
     data.fixtures,
     analyses,
-    14,
-    (fixture) => risks.get(fixture.id)?.ok === true && isMajorCompetition(fixture),
+    20,
+    (fixture) => risks.get(fixture.id)?.ok === true && isEligibleCompetition(fixture),
   );
   const checked = await Promise.all(
     shortlist.map(async (candidate): Promise<Candidate | undefined> => {
@@ -139,7 +139,7 @@ async function selectVerifiedPicks(
       return { ...candidate, insight, conservative, tier: tierFor(conservative), score: scoreOf(conservative, candidate.edge) };
     }),
   );
-  return choosePicks(checked.filter((item): item is Candidate => item !== undefined));
+  return buildSlip(checked.filter((item): item is Candidate => item !== undefined));
 }
 
 function compose(

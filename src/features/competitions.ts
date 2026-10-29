@@ -100,25 +100,13 @@ export function leagueMeta(leagueId: string, fallbackName: string): { name: stri
   return { name, country: continental ? (region ?? country) : (country || region || countryOf(name)) };
 }
 
-/**
- * Countries and regions the app picks from: the major leagues, the continental and international
- * tournaments (Europe, World Cup, Nations League, Copa America, Africa Cup) and well-covered
- * leagues elsewhere. Obscure leagues have thin data, no bookmaker markets and unreliable form.
- */
-export const COVERED_COUNTRIES = [
-  'England', 'Spain', 'Germany', 'Italy', 'France', 'Netherlands', 'Portugal', 'Scotland',
-  'Belgium', 'Turkey', 'Europe', 'World Cup', 'South America', 'Africa', 'Brazil', 'Argentina',
-  'Mexico', 'USA', 'Saudi Arabia', 'Japan', 'Australia',
-];
-
-const COVERED = new Set(COVERED_COUNTRIES);
-
 /** Lower tiers, youth, college, reserve sides and friendlies: results there are too unpredictable. */
 const EXCLUDED_COMPETITION =
   /ncaa|college|(^|\s)u-?\d{2}\b|youth|reserve|friendl|\bb team\b|\bii\b|academy|nacional b|primera b|primera c|serie c|serie d|3\. liga|regionalliga|oberliga|primera rfef|segunda rfef|tercera|amateur|national league (north|south)/i;
 
-export function isMajorCompetition(fixture: Pick<FootballMatch, 'country' | 'competition'>) {
-  return COVERED.has(fixture.country) && !EXCLUDED_COMPETITION.test(fixture.competition);
+/** Any professional competition in the world, minus the excluded kinds above. */
+export function isEligibleCompetition(fixture: Pick<FootballMatch, 'competition'>) {
+  return !EXCLUDED_COMPETITION.test(fixture.competition);
 }
 
 export function countryOf(competition: string): string {

@@ -3,11 +3,14 @@ import type { FootballMatch } from './football-data';
 import type { LoggedPick } from './learning';
 import { FAMILY_LABEL, familyOf, formatPercent, type MarketFamily } from './markets';
 
-const PICK_COUNT = 3;
+/** The day's slip is built to pay at least this much, using as few legs as it takes. */
+export const SLIP_MIN_ODDS = 1.4;
+const SLIP_MAX_LEGS = 5;
+const SLIP_POOL = 16;
 const MIN_CONSERVATIVE_PROBABILITY = 0.7;
-const SHORTLIST_SIZE = 14;
+const SHORTLIST_SIZE = 20;
 const MAX_PER_FIXTURE = 2;
-const MIN_PRICE = 1.1;
+const MIN_PRICE = 1.05;
 const ESTIMATED_MARGIN = 0.05;
 const SKIPPED = new Set(['draw', 'dc12']);
 
@@ -115,36 +118,51 @@ export function rankCandidates(
 }
 
 /**
- * Final selection: one bet per market family (result, goals, both-teams, handicap) and per
- * match, so the three bets are genuinely different views of the day rather than three "home win"s.
+ * Builds the day's slip. A slip pays the product of its legs' odds but only wins if every leg
+ * wins, so for a given target payout the safest slip uses the fewest and most probable legs.
+ * Every subset of up to five matches from the verified pool is scored by the chance all legs win
+ * (using the conservative probabilities); the best subset that reaches the target odds wins.
+ * If no subset reaches the target, the highest-paying safe subset is returned instead.
  */
-export function choosePicks(candidates: Candidate[]): Pick[] {
-  const sorted = [...candidates].sort((a, b) => b.score - a.score);
-  const chosen: Candidate[] = [];
-  const families = new Set<MarketFamily>();
-  const keys = new Set<string>();
-  // Pass 1 wants a different market family each time, pass 2 at least a different bet type, and
-  // only then is repetition allowed. The three bets should read as different angles on the day.
-  const take = (allowed: (candidate: Candidate) => boolean) => {
-    for (const candidate of sorted) {
-      if (chosen.length === PICK_COUNT) return;
-      if (chosen.some((pick) => pick.fixtureId === candidate.fixtureId)) continue;
-      if (!allowed(candidate)) continue;
-      families.add(familyOf(candidate.key));
-      keys.add(candidate.key);
-      chosen.push(candidate);
+export function buildSlip(candidates: Candidate[]): Pick[] {
+  const pool = [...candidates].sort((a, b) => b.conservative - a.conservative).slice(0, SLIP_POOL);
+  type Best = { legs: Candidate[]; odds: number; chance: number; families: number };
+  let bestHit: Best | undefined;
+  let bestMiss: Best | undefined;
+
+  const visit = (start: number, legs: Candidate[], odds: number, chance: number) => {
+    if (legs.length) {
+      const families = new Set(legs.map((leg) => familyOf(leg.key))).size;
+      const entry: Best = { legs, odds, chance, families };
+      if (odds >= SLIP_MIN_ODDS) {
+        const better =
+          !bestHit ||
+          chance > bestHit.chance + 1e-9 ||
+          (Math.abs(chance - bestHit.chance) <= 1e-9 && families > bestHit.families);
+        if (better) bestHit = entry;
+      } else if (!bestMiss || odds > bestMiss.odds) {
+        bestMiss = entry;
+      }
+    }
+    if (legs.length === SLIP_MAX_LEGS) return;
+    for (let i = start; i < pool.length; i += 1) {
+      const next = pool[i];
+      if (legs.some((leg) => leg.fixtureId === next.fixtureId)) continue;
+      visit(i + 1, [...legs, next], odds * next.odds, chance * next.conservative);
     }
   };
-  take((candidate) => !families.has(familyOf(candidate.key)));
-  take((candidate) => !keys.has(candidate.key));
-  take(() => true);
-  return chosen.map(({ score: _score, ...pick }) => pick);
+  visit(0, [], 1, 1);
+
+  const chosen = (bestHit ?? bestMiss)?.legs ?? [];
+  return chosen
+    .sort((a, b) => b.conservative - a.conservative)
+    .map(({ score: _score, ...pick }) => pick);
 }
 
 export function combinedStats(picks: Pick[]) {
   return {
     odds: picks.reduce((product, pick) => product * pick.odds, 1),
     // Product of single-pick chances; assumes the matches are independent.
-    chance: picks.reduce((product, pick) => product * pick.probability, 1),
+    chance: picks.reduce((product, pick) => product * pick.conservative, 1),
   };
 }
