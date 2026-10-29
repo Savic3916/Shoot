@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Logo } from '@/components/logo';
 import { PickCard } from '@/components/pick-card';
+import { StakePanel } from '@/components/stake-panel';
 import { PALETTE } from '@/constants/palette';
 import { getMatchdayData, type MatchdayData } from '@/features/football-data';
 import { formatPercent } from '@/features/markets';
@@ -152,6 +153,8 @@ export default function PicksScreen() {
                 <Text style={styles.combinedOdds}>{stats.odds.toFixed(2)}</Text>
               </View>
             )}
+
+            {stats && <StakePanel odds={stats.odds} chance={stats.chance} />}
 
             {track && track.picksSettled > 0 && (
               <Text style={styles.record}>
