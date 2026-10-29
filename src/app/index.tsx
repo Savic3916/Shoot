@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Logo } from '@/components/logo';
 import { PickCard } from '@/components/pick-card';
-import { TennisSection } from '@/components/tennis-section';
+import { BasketballSection } from '@/components/basketball-section';
 import { PALETTE } from '@/constants/palette';
 import { getMatchdayData, type MatchdayData } from '@/features/football-data';
 import { formatPercent } from '@/features/markets';
@@ -18,10 +18,10 @@ function getDayString(offset: number) {
 }
 
 type Loaded = { key: string; data?: MatchdayData; error?: string };
-type Sport = 'football' | 'tennis';
+type Sport = 'football' | 'basketball';
 const SPORTS: { id: Sport; label: string }[] = [
   { id: 'football', label: 'Football' },
-  { id: 'tennis', label: 'Tennis' },
+  { id: 'basketball', label: 'Basketball' },
 ];
 
 export default function PicksScreen() {
@@ -112,13 +112,13 @@ export default function PicksScreen() {
         </View>
 
         <Text style={styles.title}>
-          {sport === 'tennis'
-            ? dayOffset === 0 ? 'Today’s tennis' : 'Tomorrow’s tennis'
+          {sport === 'basketball'
+            ? dayOffset === 0 ? 'Today’s basketball' : 'Tomorrow’s basketball'
             : dayOffset === 0 ? 'Today’s three' : 'Tomorrow’s three'}
         </Text>
         <Text style={styles.subtitle}>
-          {sport === 'tennis'
-            ? 'Set bets on heavy favourites: the player only has to win one set. Offered only when every check passes — on many days there is none. Once set, they never change.'
+          {sport === 'basketball'
+            ? 'Wide NBA handicaps on lopsided games, offered only when rest, injuries and prices all check out — on many days there is none. Once set, they never change.'
             : 'Three bets a day, each from a different market and chosen for how likely it is to land. Once set, they never change.'}
         </Text>
 
@@ -138,13 +138,8 @@ export default function PicksScreen() {
         </View>
         <Text style={styles.date}>{displayDate}</Text>
 
-        {sport === 'tennis' ? (
-          <TennisSection
-            date={date}
-            timezone={timezone}
-            refreshKey={refreshKey}
-            onRetry={() => setRefreshKey((key) => key + 1)}
-          />
+        {sport === 'basketball' ? (
+          <BasketballSection date={date} timezone={timezone} refreshKey={refreshKey} />
         ) : (
           <>
           {current?.error ? (

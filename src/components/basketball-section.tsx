@@ -56,7 +56,7 @@ function BasketballCard({ pick, index }: { pick: BasketballPick; index: number }
   );
 }
 
-/** NBA bets shown when there is no safe tennis bet for the day. */
+/** NBA bets for one day. Locked once made, so they never change. */
 export function BasketballSection({
   date,
   timezone,
@@ -87,7 +87,6 @@ export function BasketballSection({
 
   return (
     <View style={styles.wrap}>
-      <Text style={styles.heading}>Basketball instead</Text>
       {current?.error ? (
         <Text style={styles.empty}>{current.error}</Text>
       ) : !brief ? (
@@ -128,8 +127,7 @@ export function BasketballSection({
 }
 
 const styles = StyleSheet.create({
-  wrap: { marginTop: 22 },
-  heading: { color: PALETTE.ink, fontSize: 20, fontWeight: '800', letterSpacing: -0.4, marginBottom: 12 },
+  wrap: {},
   loading: { alignItems: 'center', gap: 10, paddingVertical: 30 },
   empty: { color: PALETTE.muted, fontSize: 14, lineHeight: 20 },
   notice: { backgroundColor: PALETTE.surface, borderRadius: 16, padding: 18 },

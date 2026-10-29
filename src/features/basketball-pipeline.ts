@@ -9,7 +9,7 @@ import { devig } from './odds';
 import { loadJson, saveJson } from '@/lib/storage';
 
 /**
- * Basketball (NBA) fallback for days with no safe tennis bet. The bet is "favourite +L": a wide
+ * Basketball (NBA) bets. The bet is "favourite +L": a wide
  * handicap that only loses if the favourite is beaten by L points or more. The bookmaker spread is
  * used as the expected margin (it already holds most public information); the work here is risk
  * selection: lopsided games only, no back-to-backs, no absent key players, and a spread that
