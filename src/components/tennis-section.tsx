@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { BasketballSection } from '@/components/basketball-section';
 import { TennisCard } from '@/components/tennis-card';
 import { PALETTE } from '@/constants/palette';
 import { buildTennisBrief, type TennisBrief } from '@/features/tennis-pipeline';
@@ -76,10 +77,12 @@ export function TennisSection({
             {brief.matchesAnalysed
               ? `We checked ${brief.matchesAnalysed} singles matches. None had a favourite rated at least 95% to win a set who has also won a set in every recent match.`
               : 'No ATP or WTA singles matches were found for this day.'}{' '}
-            Passing on a day is part of keeping the win rate high.
+            Passing on a day is part of keeping the win rate high, so basketball steps in instead.
           </Text>
         </View>
       )}
+
+      {!picks.length && <BasketballSection date={date} timezone={timezone} refreshKey={refreshKey} />}
 
       {track.settled > 0 && (
         <Text style={styles.record}>

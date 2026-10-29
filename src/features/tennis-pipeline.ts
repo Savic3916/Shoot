@@ -217,6 +217,7 @@ function buildInsight(
       ? `They met ${h2h.length === 1 ? 'once' : `${h2h.length} times`} recently: ${h2h.map((meeting) => `${meeting.winner} won ${meeting.score}`).join('; ')}.`
       : 'They have not played each other in the last three months.',
     `We also give ${player.name} ${pct(forecastResult.matchProb)} to win the whole match.`,
+    `${player.name} has not retired from a match in the last 45 days, has played within the last month, and has not played a heavy load (five or more sets) in the last two days.`,
     'Main risk: an injury or retirement. Check your bookmaker’s rules for what happens if a player retires.',
   ];
   return {
@@ -294,6 +295,14 @@ export async function buildTennisBrief(
     }
   }
 
+  // Players who retired mid-match in the last 45 days may be carrying an injury.
+  const recentRetirements = new Set<string>();
+  for (const match of history) {
+    if (!match.retired) continue;
+    if (Date.parse(match.utcDate) < Date.parse(`${date}T00:00:00Z`) - 45 * 86_400_000) continue;
+    for (const player of match.players) recentRetirements.add(player.id);
+  }
+
   // The feed buckets days in US time, so neighbouring days can hold this local day's matches.
   const days = [-1, 0, 1].map((offset) => shiftDay(date, offset));
   const upcoming: TennisMatch[] = [];
@@ -322,6 +331,18 @@ export async function buildTennisBrief(
     const wonASetEveryTime =
       recent.length >= 3 && recent.every((item) => setsWon(item.match)[item.index] >= 1);
     if (!wonASetEveryTime) continue;
+
+    // Injury and fatigue risk for the favourite: a recent retirement, a heavy load in the last
+    // two days (five or more sets), or a long absence all rule the match out.
+    const favouriteId = match.players[favourite].id;
+    if (recentRetirements.has(favouriteId)) continue;
+    const matchStart = Date.parse(match.utcDate);
+    const lastMatch = recent[recent.length - 1];
+    if (lastMatch && matchStart - Date.parse(lastMatch.match.utcDate) > 30 * 86_400_000) continue;
+    const setsLastTwoDays = recent
+      .filter((item) => matchStart - Date.parse(item.match.utcDate) < 2 * 86_400_000)
+      .reduce((sum, item) => sum + item.match.sets.length, 0);
+    if (setsLastTwoDays >= 5) continue;
     candidates.push({ match, result, favourite });
   }
   candidates.sort((a, b) => b.result.setProb - a.result.setProb);
