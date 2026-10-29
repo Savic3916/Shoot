@@ -1,3 +1,4 @@
+import { leagueMeta } from './competitions';
 import { parseMarketOdds, type MarketOdds } from './odds';
 
 /** Cards shown in a finished match; absent when the feed carries no match events for it. */
@@ -8,6 +9,8 @@ export type FootballMatch = {
   utcDate: string;
   status: string;
   competition: string;
+  /** Country or region of the competition, e.g. England, Spain, Europe, World Cup. */
+  country: string;
   homeTeam: string;
   awayTeam: string;
   homeTeamId: string;
@@ -110,13 +113,17 @@ export function normalizeEvent(event: Record<string, unknown>) {
   const homeEntry = eventCompetitors.find((team) => team.homeAway === 'home');
   const awayEntry = eventCompetitors.find((team) => team.homeAway === 'away');
 
+  const leagueId = leagueIdOf(event);
+  const league = leagueMeta(leagueId, competitionName(event));
+
   return {
     fixture: {
       id,
       utcDate,
       status,
-      competition: competitionName(event),
-      leagueId: leagueIdOf(event),
+      competition: league.name,
+      country: league.country,
+      leagueId,
       cards: parseCards(competition, homeId, awayId),
       homeTeam: homeName,
       awayTeam: awayName,

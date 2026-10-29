@@ -19,6 +19,7 @@ import {
 } from './learning';
 import { choosePicks, rankCandidates, scoreOf, tierFor, type Candidate, type Pick } from './picks';
 import { fitRatings, type Ratings } from './ratings';
+import { isMajorCompetition, summariseCoverage } from './competitions';
 import { assessMatch, buildTeamHistory, type TeamHistory } from './risk';
 import { loadJson, saveJson } from '@/lib/storage';
 
@@ -36,6 +37,8 @@ export type Brief = {
   /** Stage 1 uses bookmaker prices only; stage 2 adds stats ratings and learning. */
   stage: 'market' | 'full';
   historyMatches: number;
+  /** Every match of the day that was analysed, grouped by country or region. */
+  coverage: { country: string; matches: number }[];
 };
 
 function hasStarted(fixture: FootballMatch) {
@@ -97,7 +100,7 @@ async function selectVerifiedPicks(
     data.fixtures,
     analyses,
     14,
-    (fixture) => risks.get(fixture.id)?.ok === true,
+    (fixture) => risks.get(fixture.id)?.ok === true && isMajorCompetition(fixture),
   );
   const checked = await Promise.all(
     shortlist.map(async (candidate): Promise<Candidate | undefined> => {
@@ -164,6 +167,7 @@ function compose(
     track: trackRecord(records, stored),
     stage,
     historyMatches,
+    coverage: summariseCoverage(data.fixtures),
   };
 }
 

@@ -56,6 +56,12 @@ function labelFor(key: string, fixture: FootballMatch): string {
     case 'dc1x': return `${homeTeam} or draw`;
     case 'dcx2': return `${awayTeam} or draw`;
     case 'dc12': return 'No draw';
+    case 'dnbH': return `${homeTeam} (draw no bet)`;
+    case 'dnbA': return `${awayTeam} (draw no bet)`;
+    case 'hs1': return `${homeTeam} to score`;
+    case 'as1': return `${awayTeam} to score`;
+    case 'hs2': return `${homeTeam} to score 2 or more`;
+    case 'as2': return `${awayTeam} to score 2 or more`;
     case 'btts': return 'Both teams to score';
     case 'nobtts': return 'Both teams NOT to score';
   }

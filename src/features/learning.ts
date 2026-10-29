@@ -29,6 +29,7 @@ export type LoggedPick = {
   home: string;
   away: string;
   competition: string;
+  country?: string;
   key: string;
   label: string;
   family: string;

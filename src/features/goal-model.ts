@@ -68,6 +68,11 @@ export function overProb(matrix: ScoreMatrix, line: number) {
   return parts.reduce((sum, value) => sum + value, 0) / parts.length;
 }
 
+/** P(one side scores at least `goals`). */
+export function teamGoalsProb(matrix: ScoreMatrix, side: 'home' | 'away', goals: number) {
+  return sumWhere(matrix, (h, a) => (side === 'home' ? h : a) >= goals);
+}
+
 export function bttsProb(matrix: ScoreMatrix) {
   return sumWhere(matrix, (h, a) => h > 0 && a > 0);
 }

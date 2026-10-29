@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AnalysisPanel } from '@/components/analysis-panel';
 import { PALETTE } from '@/constants/palette';
+import { countryOf } from '@/features/competitions';
 import { formatPercent } from '@/features/markets';
 import type { Pick } from '@/features/picks';
 
@@ -32,7 +33,7 @@ export function PickCard({ pick, index }: { pick: Pick; index: number }) {
 
       <Text style={styles.selection}>{pick.label}</Text>
       <Text style={styles.match}>{pick.home} vs {pick.away}</Text>
-      <Text style={styles.meta}>{pick.competition} · {kickoff}{Date.parse(pick.utcDate) <= Date.now() ? ' · already started' : ''}</Text>
+      <Text style={styles.meta}>{pick.country ?? countryOf(pick.competition)} · {pick.competition} · {kickoff}{Date.parse(pick.utcDate) <= Date.now() ? ' · already started' : ''}</Text>
 
       <View style={styles.predicted}>
         <Text style={styles.predictedLabel}>Predicted score</Text>

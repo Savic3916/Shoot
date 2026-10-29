@@ -82,6 +82,7 @@ export function rankCandidates(
         home: fixture.homeTeam,
         away: fixture.awayTeam,
         competition: fixture.competition,
+        country: fixture.country,
         key: line.key,
         label: line.label,
         family: FAMILY_LABEL[familyOf(line.key)],
@@ -119,18 +120,22 @@ export function choosePicks(candidates: Candidate[]): Pick[] {
   const sorted = [...candidates].sort((a, b) => b.score - a.score);
   const chosen: Candidate[] = [];
   const families = new Set<MarketFamily>();
-  const take = (strict: boolean) => {
+  const keys = new Set<string>();
+  // Pass 1 wants a different market family each time, pass 2 at least a different bet type, and
+  // only then is repetition allowed. The three bets should read as different angles on the day.
+  const take = (allowed: (candidate: Candidate) => boolean) => {
     for (const candidate of sorted) {
       if (chosen.length === PICK_COUNT) return;
-      const family = familyOf(candidate.key);
       if (chosen.some((pick) => pick.fixtureId === candidate.fixtureId)) continue;
-      if (strict && families.has(family)) continue;
-      families.add(family);
+      if (!allowed(candidate)) continue;
+      families.add(familyOf(candidate.key));
+      keys.add(candidate.key);
       chosen.push(candidate);
     }
   };
-  take(true);
-  take(false);
+  take((candidate) => !families.has(familyOf(candidate.key)));
+  take((candidate) => !keys.has(candidate.key));
+  take(() => true);
   return chosen.map(({ score: _score, ...pick }) => pick);
 }
 
