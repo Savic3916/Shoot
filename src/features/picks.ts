@@ -39,16 +39,19 @@ export function rankCandidates(
   date: string,
   fixtures: FootballMatch[],
   analyses: Map<string, MatchAnalysis>,
+  limit = SHORTLIST_SIZE,
+  isEligible: (fixture: FootballMatch) => boolean = () => true,
 ): Candidate[] {
   const candidates: Candidate[] = [];
 
   for (const fixture of fixtures) {
     const analysis = analyses.get(fixture.id);
-    if (!analysis || analysis.quality < 0.5) continue;
+    if (!analysis || analysis.quality < 0.5 || !isEligible(fixture)) continue;
 
     for (const line of analysis.lines) {
-      // ±0.5 handicaps are just "win" / "win or draw" under another name.
-      if (SKIPPED.has(line.key) || /^ahA?:-?0\.5$/.test(line.key)) continue;
+      // +/-0.5 handicaps are "win" / "win or draw" renamed. +/-1.5 handicaps won only 30% when a
+      // red card appeared in testing, so they are left out entirely.
+      if (SKIPPED.has(line.key) || /^ahA?:-?(0|1)\.5$/.test(line.key)) continue;
 
       const m = analysis.marketProbs?.[line.key];
       const s = analysis.statProbs?.[line.key];
@@ -103,7 +106,7 @@ export function rankCandidates(
     if (used >= MAX_PER_FIXTURE) continue;
     perFixture.set(candidate.fixtureId, used + 1);
     shortlist.push(candidate);
-    if (shortlist.length === SHORTLIST_SIZE) break;
+    if (shortlist.length === limit) break;
   }
   return shortlist;
 }

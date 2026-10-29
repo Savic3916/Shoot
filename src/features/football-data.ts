@@ -1,5 +1,8 @@
 import { parseMarketOdds, type MarketOdds } from './odds';
 
+/** Cards shown in a finished match; absent when the feed carries no match events for it. */
+export type MatchCards = { homeRed: number; awayRed: number; homeYellow: number; awayYellow: number };
+
 export type FootballMatch = {
   id: string;
   utcDate: string;
@@ -14,6 +17,7 @@ export type FootballMatch = {
   /** Bookmaker prices (1X2, totals, handicap) when the feed carries them. */
   market?: MarketOdds;
   leagueId: string;
+  cards?: MatchCards;
 };
 
 export type MatchdayData = {
@@ -47,6 +51,20 @@ function competitionName(event: Record<string, unknown>) {
 
 function leagueIdOf(event: Record<string, unknown>) {
   return typeof event.uid === 'string' ? (event.uid.match(/~l:(\d+)/)?.[1] ?? '0') : '0';
+}
+
+function parseCards(competition: Record<string, unknown> | undefined, homeId: string, awayId: string) {
+  const details = records(competition?.details);
+  if (!details.length) return undefined;
+  const cards: MatchCards = { homeRed: 0, awayRed: 0, homeYellow: 0, awayYellow: 0 };
+  for (const detail of details) {
+    const teamId = isRecord(detail.team) ? String(detail.team.id) : '';
+    const home = teamId === homeId;
+    if (!home && teamId !== awayId) continue;
+    if (detail.redCard === true) cards[home ? 'homeRed' : 'awayRed'] += 1;
+    else if (detail.yellowCard === true) cards[home ? 'homeYellow' : 'awayYellow'] += 1;
+  }
+  return cards;
 }
 
 export function normalizeEvent(event: Record<string, unknown>) {
@@ -99,6 +117,7 @@ export function normalizeEvent(event: Record<string, unknown>) {
       status,
       competition: competitionName(event),
       leagueId: leagueIdOf(event),
+      cards: parseCards(competition, homeId, awayId),
       homeTeam: homeName,
       awayTeam: awayName,
       homeTeamId: homeId,

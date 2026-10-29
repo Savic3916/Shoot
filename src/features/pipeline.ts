@@ -19,6 +19,7 @@ import {
 } from './learning';
 import { choosePicks, rankCandidates, scoreOf, tierFor, type Candidate, type Pick } from './picks';
 import { fitRatings, type Ratings } from './ratings';
+import { assessMatch, buildTeamHistory, type TeamHistory } from './risk';
 import { loadJson, saveJson } from '@/lib/storage';
 
 const LOCKED_KEY = 'learn:locked-days:v1';
@@ -85,9 +86,19 @@ async function withInsights(
 async function selectVerifiedPicks(
   data: MatchdayData,
   analyses: Map<string, MatchAnalysis>,
+  history: TeamHistory,
   signal?: AbortSignal,
 ): Promise<Pick[]> {
-  const shortlist = rankCandidates(data.date, data.fixtures, analyses);
+  // Red-card and fatigue risk are checked before anything else: a match whose risk cannot be
+  // measured, or is high, is never offered however good the numbers look.
+  const risks = new Map(data.fixtures.map((fixture) => [fixture.id, assessMatch(fixture, history)]));
+  const shortlist = rankCandidates(
+    data.date,
+    data.fixtures,
+    analyses,
+    14,
+    (fixture) => risks.get(fixture.id)?.ok === true,
+  );
   const checked = await Promise.all(
     shortlist.map(async (candidate): Promise<Candidate | undefined> => {
       const fixture = data.fixtures.find((item) => item.id === candidate.fixtureId);
@@ -98,6 +109,17 @@ async function selectVerifiedPicks(
         const conservative = candidate.conservative - 0.04; // unverified against recent form
         return { ...candidate, conservative, tier: tierFor(conservative), score: scoreOf(conservative, candidate.edge) };
       }
+      // Team news: a reported injury, suspension or club problem rules the match out.
+      const flagged = [...insight.home.news, ...insight.away.news].find(
+        (item) => item.kind === 'availability' || item.kind === 'club',
+      );
+      if (flagged) return undefined;
+      insight.betReasons.splice(
+        Math.max(0, insight.betReasons.length - 1),
+        0,
+        ...(risks.get(candidate.fixtureId)?.notes ?? []),
+        'No injury, suspension or club-trouble headlines for either team in the last three weeks.',
+      );
       const { hits, n } = formSupport(candidate.key, insight);
       let conservative = candidate.conservative;
       if (n >= 6) {
@@ -174,7 +196,7 @@ export async function buildBrief(
   if (locked) {
     brief = { ...brief, picks: await withInsights(brief.picks, data, brief.analyses, signal) };
   } else {
-    brief = { ...brief, picks: await selectVerifiedPicks(data, brief.analyses, signal) };
+    brief = { ...brief, picks: await selectVerifiedPicks(data, brief.analyses, buildTeamHistory(results), signal) };
   }
 
   // A concurrent run (e.g. a quick refresh) may have locked the day while this one was computing.
