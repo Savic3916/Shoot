@@ -98,9 +98,9 @@ async function withInsights(
 }
 
 /** Strictest confidence bar first; relax only until the slip can reach the target odds. */
-function bestSlip(pool: Candidate[]): Pick[] {
+function bestSlip(pool: Candidate[], ladder = CONFIDENCE_LADDER): Pick[] {
   let slip: Pick[] = [];
-  for (const bar of CONFIDENCE_LADDER) {
+  for (const bar of ladder) {
     slip = buildSlip(pool.filter((item) => item.conservative >= bar));
     if (slip.reduce((odds, pick) => odds * pick.odds, 1) >= SLIP_MIN_ODDS) break;
   }
@@ -187,11 +187,14 @@ async function selectVerifiedPicks(
   if (slip.length) return slip;
   // Last resort so no day is empty: every match is considered again without the form, news and
   // risk filters, and the strongest picks are marked down for being unverified.
-  const fallback = rankCandidates(data.date, data.fixtures, analyses, Infinity).map((candidate): Candidate => {
+  // Days far ahead often have no bookmaker prices yet, so the evidence bar drops too; the slip is
+  // then built from the best of whatever exists and its low chance is shown honestly.
+  const lastResort = [...CONFIDENCE_LADDER, 0.5, 0.4];
+  const fallback = rankCandidates(data.date, data.fixtures, analyses, Infinity, undefined, 0.4, 0).map((candidate): Candidate => {
     const conservative = candidate.conservative - 0.04;
     return { ...candidate, conservative, tier: tierFor(conservative), score: scoreOf(conservative, candidate.edge) };
   });
-  return bestSlip(fallback.filter((item) => item.conservative >= CONFIDENCE_FLOOR));
+  return bestSlip(fallback, lastResort);
 }
 
 function compose(
@@ -234,7 +237,8 @@ export async function buildBrief(
     loadPicks(),
     loadJson<string[]>(LOCKED_KEY, []),
   ]);
-  const locked = lockedDays.includes(data.date);
+  // A day only counts as locked if it actually has picks; an empty day is always worked out again.
+  const locked = lockedDays.includes(data.date) && picks0.some((pick) => pick.date === data.date);
   const learned0 = records0.length ? fitLearned(records0) : DEFAULT_LEARNED;
   onStage(compose(data, undefined, learned0, records0, picks0, locked, 'market', 0));
 
@@ -259,8 +263,8 @@ export async function buildBrief(
   // Re-check so the first stored set always wins.
   if (!locked) {
     const latest = await loadJson<string[]>(LOCKED_KEY, []);
-    if (latest.includes(data.date)) {
-      const stored = await loadPicks();
+    const stored = latest.includes(data.date) ? await loadPicks() : [];
+    if (stored.some((pick) => pick.date === data.date)) {
       brief = { ...brief, picks: frozenPicks(stored, data.date), picksLocked: true };
       return { ...brief, track: trackRecord(settled.records, stored) };
     }
@@ -281,7 +285,10 @@ export async function buildBrief(
   if (!locked || gainedInsight) {
     const others = settled.picks.filter((pick) => pick.date !== data.date);
     await savePicks([...others, ...brief.picks.map(({ edge: _e, ...pick }) => pick)]);
-    if (!locked) await saveJson(LOCKED_KEY, [...lockedDays, data.date].slice(-60));
+    // Only a day that has picks is locked; an empty day is worked out again next time.
+    if (!locked && brief.picks.length) {
+      await saveJson(LOCKED_KEY, [...new Set([...lockedDays, data.date])].slice(-60));
+    }
   }
   return { ...brief, track: trackRecord(mergedRecords, settled.picks) };
 }

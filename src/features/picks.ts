@@ -50,12 +50,14 @@ export function rankCandidates(
   analyses: Map<string, MatchAnalysis>,
   limit = SHORTLIST_SIZE,
   isEligible: (fixture: FootballMatch) => boolean = () => true,
+  minProbability = CONFIDENCE_FLOOR,
+  minQuality = 0.5,
 ): Candidate[] {
   const candidates: Candidate[] = [];
 
   for (const fixture of fixtures) {
     const analysis = analyses.get(fixture.id);
-    if (!analysis || analysis.quality < 0.5 || !isEligible(fixture)) continue;
+    if (!analysis || analysis.quality < minQuality || !isEligible(fixture)) continue;
 
     for (const line of analysis.lines) {
       // Only bets SportyBet lists on virtually every match: 1X2, double chance, GG/NG and
@@ -68,7 +70,7 @@ export function rankCandidates(
       let conservative = line.probability;
       if (m !== undefined && s !== undefined) conservative -= 0.75 * Math.abs(m - s);
       else if (m === undefined) conservative -= 0.06; // stats only: no market cross-check
-      if (conservative < CONFIDENCE_FLOOR) continue;
+      if (conservative < minProbability) continue;
 
       const priceIsEstimate = !line.bookOdds;
       const odds = line.bookOdds ?? Math.max(1.01, (1 - ESTIMATED_MARGIN) / line.probability);
