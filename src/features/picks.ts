@@ -3,16 +3,11 @@ import type { FootballMatch } from './football-data';
 import type { LoggedPick } from './learning';
 import { FAMILY_LABEL, familyOf, formatPercent, type MarketFamily } from './markets';
 
-/** The day's slip is built to pay between these odds, using as few legs as it takes. */
-export const SLIP_MIN_ODDS = 1.4;
-export const SLIP_MAX_ODDS = 1.5;
-const SLIP_MAX_LEGS = 10;
-/**
- * Confidence bars tried in order. The slip is built at the strictest bar that can reach the target
- * odds, so a day is only ever filled with weaker picks when stronger ones cannot do the job.
- */
-export const CONFIDENCE_LADDER = [0.78, 0.72, 0.66, 0.6];
-export const CONFIDENCE_FLOOR = CONFIDENCE_LADDER[CONFIDENCE_LADDER.length - 1];
+/** The day's main bet is one game paying inside this band; an optional add-on pays inside the other. */
+export const MAIN_ODDS: [number, number] = [1.2, 1.3];
+export const ADDON_ODDS: [number, number] = [1.1, 1.15];
+/** Lowest chance a bet may have to be offered (the strongest bet inside the band always wins). */
+export const CONFIDENCE_FLOOR = 0.6;
 const SHORTLIST_SIZE = Infinity;
 const MAX_PER_FIXTURE = 2;
 const MIN_PRICE = 1.05;
@@ -125,64 +120,32 @@ export function rankCandidates(
 }
 
 /**
- * Builds the day's slip. A slip pays the product of its legs' odds but only wins if every leg
- * wins, so for a given target payout the safest slip uses the fewest and most probable legs.
- * Every combination of up to ten matches from the whole verified pool is considered, exactly:
- * the winner is the one with the best chance that all legs win (using the conservative
- * probabilities) among those paying inside the odds band, else the best that pays more. Adding a leg can only lower that chance,
- * so a combination is never extended once it hits the target or can no longer beat the best found.
- * If no combination can reach the target, the highest-paying legs are returned instead.
+ * Picks the single most probable game paying inside the odds band. A bet that pays more than its
+ * band is only the fallback when nothing fits, and a bet that pays less never is: a higher price
+ * with a lower chance is a different bet, not a safer one.
  */
-export function buildSlip(candidates: Candidate[]): Pick[] {
-  const pool = [...candidates].sort((a, b) => b.conservative - a.conservative);
-  const strip = (legs: Candidate[]) =>
-    [...legs]
-      .sort((a, b) => b.conservative - a.conservative)
-      .map(({ score: _score, ...pick }) => pick);
+export function bestSingle(pool: Candidate[], [low, high]: [number, number], strict = false): Candidate | undefined {
+  const byChance = (a: Candidate, b: Candidate) => b.conservative - a.conservative || b.odds - a.odds;
+  const inBand = pool.filter((item) => item.odds >= low && item.odds <= high).sort(byChance);
+  if (inBand.length || strict) return inBand[0];
+  const above = pool.filter((item) => item.odds > high).sort(byChance);
+  return above[0] ?? [...pool].sort((a, b) => b.odds - a.odds)[0];
+}
 
-  // Best price available per match: if even the top ten cannot reach the target, none can.
-  const topOdds = new Map<string, Candidate>();
-  for (const candidate of pool) {
-    const held = topOdds.get(candidate.fixtureId);
-    if (!held || candidate.odds > held.odds) topOdds.set(candidate.fixtureId, candidate);
-  }
-  const highest = [...topOdds.values()].sort((a, b) => b.odds - a.odds).slice(0, SLIP_MAX_LEGS);
-  if (highest.reduce((product, leg) => product * leg.odds, 1) < SLIP_MIN_ODDS) return strip(highest);
-
-  type Best = { legs: Candidate[]; chance: number; families: number };
-  const better = (entry: Best, held?: Best) =>
-    !held ||
-    entry.chance > held.chance + 1e-9 ||
-    (Math.abs(entry.chance - held.chance) <= 1e-9 && entry.families > held.families);
-  // Prefer a slip paying inside the band; one that overshoots is only the fallback.
-  let inBand: Best | undefined;
-  let overshoot: Best | undefined;
-  // Only used when no combination has landed in the band yet, so nothing can be pruned.
-  let budget = 2_000_000;
-
-  const visit = (start: number, legs: Candidate[], odds: number, chance: number) => {
-    if (legs.length && odds >= SLIP_MIN_ODDS) {
-      const entry: Best = { legs, chance, families: new Set(legs.map((leg) => familyOf(leg.key))).size };
-      if (odds <= SLIP_MAX_ODDS) {
-        if (better(entry, inBand)) inBand = entry;
-      } else if (better(entry, overshoot)) {
-        overshoot = entry;
-      }
-      return;
-    }
-    if (legs.length === SLIP_MAX_LEGS) return;
-    if (!inBand && budget-- <= 0) return;
-    for (let i = start; i < pool.length; i += 1) {
-      const next = pool[i];
-      // Pool is sorted by probability, so once a leg cannot beat the best, none after it can.
-      if (inBand && chance * next.conservative < inBand.chance - 1e-9) break;
-      if (legs.some((leg) => leg.fixtureId === next.fixtureId)) continue;
-      visit(i + 1, [...legs, next], odds * next.odds, chance * next.conservative);
-    }
-  };
-  visit(0, [], 1, 1);
-
-  return strip((inBand ?? overshoot)?.legs ?? highest);
+/**
+ * The day's bets: one main game, plus (if a different game pays inside the add-on band) an
+ * optional add-on. Every game of the day was already scored, so the best one overall wins.
+ */
+export function chooseDay(pool: Candidate[]): Pick[] {
+  const strip = ({ score: _score, ...pick }: Candidate, role: 'main' | 'addon'): Pick => ({ ...pick, role });
+  const main = bestSingle(pool, MAIN_ODDS);
+  if (!main) return [];
+  const addon = bestSingle(
+    pool.filter((item) => item.fixtureId !== main.fixtureId),
+    ADDON_ODDS,
+    true,
+  );
+  return [strip(main, 'main'), ...(addon ? [strip(addon, 'addon')] : [])];
 }
 
 export function combinedStats(picks: Pick[]) {

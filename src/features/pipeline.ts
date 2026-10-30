@@ -19,9 +19,7 @@ import {
 } from './learning';
 import {
   CONFIDENCE_FLOOR,
-  CONFIDENCE_LADDER,
-  SLIP_MIN_ODDS,
-  buildSlip,
+  chooseDay,
   rankCandidates,
   scoreOf,
   tierFor,
@@ -95,16 +93,6 @@ async function withInsights(
       return insight ? { ...pick, insight } : pick;
     }),
   );
-}
-
-/** Strictest confidence bar first; relax only until the slip can reach the target odds. */
-function bestSlip(pool: Candidate[], ladder = CONFIDENCE_LADDER): Pick[] {
-  let slip: Pick[] = [];
-  for (const bar of ladder) {
-    slip = buildSlip(pool.filter((item) => item.conservative >= bar));
-    if (slip.reduce((odds, pick) => odds * pick.odds, 1) >= SLIP_MIN_ODDS) break;
-  }
-  return slip;
 }
 
 /**
@@ -183,18 +171,17 @@ async function selectVerifiedPicks(
     });
   }
   const verified = checked.filter((item): item is Candidate => item !== undefined);
-  const slip = bestSlip(verified);
-  if (slip.length) return slip;
+  const picks = chooseDay(verified);
+  if (picks.length) return picks;
   // Last resort so no day is empty: every match is considered again without the form, news and
   // risk filters, and the strongest picks are marked down for being unverified.
   // Days far ahead often have no bookmaker prices yet, so the evidence bar drops too; the slip is
   // then built from the best of whatever exists and its low chance is shown honestly.
-  const lastResort = [...CONFIDENCE_LADDER, 0.5, 0.4];
   const fallback = rankCandidates(data.date, data.fixtures, analyses, Infinity, undefined, 0.4, 0).map((candidate): Candidate => {
     const conservative = candidate.conservative - 0.04;
     return { ...candidate, conservative, tier: tierFor(conservative), score: scoreOf(conservative, candidate.edge) };
   });
-  return bestSlip(fallback, lastResort);
+  return chooseDay(fallback);
 }
 
 function compose(

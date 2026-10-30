@@ -43,6 +43,8 @@ export type LoggedPick = {
   insight?: PickInsight;
   /** Chance after penalising model disagreement and thin evidence; this is the chance shown. */
   conservative?: number;
+  /** The day's main bet, or an optional add-on shown separately (older picks have none: main). */
+  role?: 'main' | 'addon';
   outcome?: 'won' | 'lost' | 'void';
 };
 
