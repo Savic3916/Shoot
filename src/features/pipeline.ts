@@ -47,6 +47,14 @@ export type Brief = {
   /** Stage 1 uses bookmaker prices only; stage 2 adds stats ratings and learning. */
   stage: 'market' | 'full';
   historyMatches: number;
+  /** While the day's games are being checked one by one: how far along, and the best found so far. */
+  progress?: Progress;
+};
+
+export type Progress = {
+  done: number;
+  total: number;
+  best?: { label: string; match: string; chance: number };
 };
 
 function hasStarted(fixture: FootballMatch) {
@@ -67,7 +75,7 @@ function analyseAll(data: MatchdayData, ratings: Ratings | undefined, learned: L
 function frozenPicks(stored: LoggedPick[], date: string): Pick[] {
   return stored
     .filter((pick) => pick.date === date)
-    .map((pick) => ({ ...pick, conservative: pick.probability }));
+    .map((pick) => ({ ...pick, conservative: pick.conservative ?? pick.probability }));
 }
 
 /** Attaches the evidence behind each pick; picks that already have it are left untouched. */
@@ -109,6 +117,7 @@ async function selectVerifiedPicks(
   analyses: Map<string, MatchAnalysis>,
   history: TeamHistory,
   signal?: AbortSignal,
+  onProgress?: (progress: Progress) => void,
 ): Promise<Pick[]> {
   // Red-card and fatigue risk are checked before anything else: a match whose risk cannot be
   // measured, or is high, is never offered however good the numbers look.
@@ -117,54 +126,68 @@ async function selectVerifiedPicks(
     data.date,
     data.fixtures,
     analyses,
-    80,
+    Infinity,
     (fixture) => risks.get(fixture.id)?.ok === true && isEligibleCompetition(fixture),
   );
-  const checked = await Promise.all(
-    shortlist.map(async (candidate): Promise<Candidate | undefined> => {
-      const fixture = data.fixtures.find((item) => item.id === candidate.fixtureId);
-      const analysis = analyses.get(candidate.fixtureId);
-      if (!fixture || !analysis) return undefined;
-      const insight = await fetchInsight(fixture, candidate, analysis, signal).catch(() => undefined);
-      if (!insight) {
-        const conservative = candidate.conservative - 0.04; // unverified against recent form
-        return { ...candidate, conservative, tier: tierFor(conservative), score: scoreOf(conservative, candidate.edge) };
-      }
-      // Team news: a reported injury, suspension or club problem rules the match out.
-      const flagged = [...insight.home.news, ...insight.away.news].find(
-        (item) => item.kind === 'availability' || item.kind === 'club',
-      );
-      if (flagged) return undefined;
+  // Every candidate is checked, a few at a time so the free feeds are not flooded.
+  const checkOne = async (candidate: Candidate): Promise<Candidate | undefined> => {
+    const fixture = data.fixtures.find((item) => item.id === candidate.fixtureId);
+    const analysis = analyses.get(candidate.fixtureId);
+    if (!fixture || !analysis) return undefined;
+    const insight = await fetchInsight(fixture, candidate, analysis, signal).catch(() => undefined);
+    if (!insight) {
+      const conservative = candidate.conservative - 0.04; // unverified against recent form
+      return { ...candidate, conservative, tier: tierFor(conservative), score: scoreOf(conservative, candidate.edge) };
+    }
+    // Team news: a reported injury, suspension or club problem rules the match out.
+    const flagged = [...insight.home.news, ...insight.away.news].find(
+      (item) => item.kind === 'availability' || item.kind === 'club',
+    );
+    if (flagged) return undefined;
+    insight.betReasons.splice(
+      Math.max(0, insight.betReasons.length - 1),
+      0,
+      ...(risks.get(candidate.fixtureId)?.notes ?? []),
+      'No injury, suspension or club-trouble headlines for either team in the last three weeks.',
+    );
+    const { hits, n } = formSupport(candidate.key, insight);
+    let conservative = candidate.conservative;
+    if (n >= 6) {
+      const support = (hits + 1) / (n + 2);
+      if (support < 0.55) return undefined; // recent form contradicts the model
+      conservative = 0.75 * conservative + 0.25 * support;
       insight.betReasons.splice(
         Math.max(0, insight.betReasons.length - 1),
         0,
-        ...(risks.get(candidate.fixtureId)?.notes ?? []),
-        'No injury, suspension or club-trouble headlines for either team in the last three weeks.',
+        `Check: this exact bet would have won in ${hits} of the last ${n} games played by these two teams.`,
       );
-      const { hits, n } = formSupport(candidate.key, insight);
-      let conservative = candidate.conservative;
-      if (n >= 6) {
-        const support = (hits + 1) / (n + 2);
-        if (support < 0.55) return undefined; // recent form contradicts the model
-        conservative = 0.75 * conservative + 0.25 * support;
-        insight.betReasons.splice(
-          Math.max(0, insight.betReasons.length - 1),
-          0,
-          `Check: this exact bet would have won in ${hits} of the last ${n} games played by these two teams.`,
-        );
-      } else {
-        conservative -= 0.02; // too little recent data to confirm
-      }
-      if (conservative < CONFIDENCE_FLOOR) return undefined;
-      return { ...candidate, insight, conservative, tier: tierFor(conservative), score: scoreOf(conservative, candidate.edge) };
-    }),
-  );
+    } else {
+      conservative -= 0.02; // too little recent data to confirm
+    }
+    if (conservative < CONFIDENCE_FLOOR) return undefined;
+    return { ...candidate, insight, conservative, tier: tierFor(conservative), score: scoreOf(conservative, candidate.edge) };
+  };
+  const checked: (Candidate | undefined)[] = [];
+  for (let i = 0; i < shortlist.length; i += 10) {
+    checked.push(...(await Promise.all(shortlist.slice(i, i + 10).map(checkOne))));
+    // Running best: every game checked so far is compared, so a stronger bet further down the
+    // list replaces an earlier one.
+    const top = checked.reduce<Candidate | undefined>(
+      (held, item) => (item && (!held || item.conservative > held.conservative) ? item : held),
+      undefined,
+    );
+    onProgress?.({
+      done: Math.min(i + 10, shortlist.length),
+      total: shortlist.length,
+      best: top && { label: top.label, match: `${top.home} vs ${top.away}`, chance: top.conservative },
+    });
+  }
   const verified = checked.filter((item): item is Candidate => item !== undefined);
   const slip = bestSlip(verified);
   if (slip.length) return slip;
   // Last resort so no day is empty: every match is considered again without the form, news and
   // risk filters, and the strongest picks are marked down for being unverified.
-  const fallback = rankCandidates(data.date, data.fixtures, analyses, 80).map((candidate): Candidate => {
+  const fallback = rankCandidates(data.date, data.fixtures, analyses, Infinity).map((candidate): Candidate => {
     const conservative = candidate.conservative - 0.04;
     return { ...candidate, conservative, tier: tierFor(conservative), score: scoreOf(conservative, candidate.edge) };
   });
@@ -226,7 +249,10 @@ export async function buildBrief(
   if (locked) {
     brief = { ...brief, picks: await withInsights(brief.picks, data, brief.analyses, signal) };
   } else {
-    brief = { ...brief, picks: await selectVerifiedPicks(data, brief.analyses, buildTeamHistory(results), signal) };
+    brief = { ...brief, picks: await selectVerifiedPicks(data, brief.analyses, buildTeamHistory(results), signal, (progress) =>
+        onStage({ ...brief, picksReady: false, progress }),
+      ),
+    };
   }
 
   // A concurrent run (e.g. a quick refresh) may have locked the day while this one was computing.
@@ -254,7 +280,7 @@ export async function buildBrief(
   const gainedInsight = locked && brief.picks.some((pick) => pick.insight && !hadInsight(pick.fixtureId));
   if (!locked || gainedInsight) {
     const others = settled.picks.filter((pick) => pick.date !== data.date);
-    await savePicks([...others, ...brief.picks.map(({ conservative: _c, edge: _e, ...pick }) => pick)]);
+    await savePicks([...others, ...brief.picks.map(({ edge: _e, ...pick }) => pick)]);
     if (!locked) await saveJson(LOCKED_KEY, [...lockedDays, data.date].slice(-60));
   }
   return { ...brief, track: trackRecord(mergedRecords, settled.picks) };

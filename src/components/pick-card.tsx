@@ -42,12 +42,12 @@ export function PickCard({ pick, index }: { pick: Pick; index: number }) {
       </View>
 
       <View style={styles.meterRow}>
-        <Text style={styles.meterLabel}>Model chance</Text>
-        <Text style={[styles.meterValue, { color: tier }]}>{formatPercent(pick.probability)}</Text>
+        <Text style={styles.meterLabel}>Chance to win</Text>
+        <Text style={[styles.meterValue, { color: tier }]}>{formatPercent(pick.conservative)}</Text>
         <Text style={[styles.tier, { color: tier, borderColor: tier }]}>{pick.tier}</Text>
       </View>
       <View style={styles.track}>
-        <View style={[styles.fill, { backgroundColor: tier, width: `${Math.round(pick.probability * 100)}%` }]} />
+        <View style={[styles.fill, { backgroundColor: tier, width: `${Math.round(pick.conservative * 100)}%` }]} />
       </View>
 
       <Pressable

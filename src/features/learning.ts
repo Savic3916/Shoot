@@ -41,6 +41,8 @@ export type LoggedPick = {
   reasons: string[];
   /** Form, head to head, table and team news gathered when the pick was made. */
   insight?: PickInsight;
+  /** Chance after penalising model disagreement and thin evidence; this is the chance shown. */
+  conservative?: number;
   outcome?: 'won' | 'lost' | 'void';
 };
 

@@ -3,17 +3,17 @@ import type { FootballMatch } from './football-data';
 import type { LoggedPick } from './learning';
 import { FAMILY_LABEL, familyOf, formatPercent, type MarketFamily } from './markets';
 
-/** The day's slip is built to pay at least this much, using as few legs as it takes. */
-export const SLIP_MIN_ODDS = 1.5;
+/** The day's slip is built to pay between these odds, using as few legs as it takes. */
+export const SLIP_MIN_ODDS = 1.4;
+export const SLIP_MAX_ODDS = 1.5;
 const SLIP_MAX_LEGS = 10;
-const SLIP_POOL = 40;
 /**
  * Confidence bars tried in order. The slip is built at the strictest bar that can reach the target
  * odds, so a day is only ever filled with weaker picks when stronger ones cannot do the job.
  */
 export const CONFIDENCE_LADDER = [0.78, 0.72, 0.66, 0.6];
 export const CONFIDENCE_FLOOR = CONFIDENCE_LADDER[CONFIDENCE_LADDER.length - 1];
-const SHORTLIST_SIZE = 80;
+const SHORTLIST_SIZE = Infinity;
 const MAX_PER_FIXTURE = 2;
 const MIN_PRICE = 1.05;
 const ESTIMATED_MARGIN = 0.05;
@@ -125,47 +125,62 @@ export function rankCandidates(
 /**
  * Builds the day's slip. A slip pays the product of its legs' odds but only wins if every leg
  * wins, so for a given target payout the safest slip uses the fewest and most probable legs.
- * Every subset of up to five matches from the verified pool is scored by the chance all legs win
- * (using the conservative probabilities); the best subset that reaches the target odds wins.
- * If no subset reaches the target, the highest-paying safe subset is returned instead.
+ * Every combination of up to ten matches from the whole verified pool is considered, exactly:
+ * the winner is the one with the best chance that all legs win (using the conservative
+ * probabilities) among those paying inside the odds band, else the best that pays more. Adding a leg can only lower that chance,
+ * so a combination is never extended once it hits the target or can no longer beat the best found.
+ * If no combination can reach the target, the highest-paying legs are returned instead.
  */
 export function buildSlip(candidates: Candidate[]): Pick[] {
-  const pool = [...candidates].sort((a, b) => b.conservative - a.conservative).slice(0, SLIP_POOL);
-  type Best = { legs: Candidate[]; odds: number; chance: number; families: number };
-  let bestHit: Best | undefined;
-  let bestMiss: Best | undefined;
+  const pool = [...candidates].sort((a, b) => b.conservative - a.conservative);
+  const strip = (legs: Candidate[]) =>
+    [...legs]
+      .sort((a, b) => b.conservative - a.conservative)
+      .map(({ score: _score, ...pick }) => pick);
 
-  // Candidates are tried best-first, so a cap on combinations keeps a huge pool of low prices quick.
-  let budget = 400_000;
+  // Best price available per match: if even the top ten cannot reach the target, none can.
+  const topOdds = new Map<string, Candidate>();
+  for (const candidate of pool) {
+    const held = topOdds.get(candidate.fixtureId);
+    if (!held || candidate.odds > held.odds) topOdds.set(candidate.fixtureId, candidate);
+  }
+  const highest = [...topOdds.values()].sort((a, b) => b.odds - a.odds).slice(0, SLIP_MAX_LEGS);
+  if (highest.reduce((product, leg) => product * leg.odds, 1) < SLIP_MIN_ODDS) return strip(highest);
+
+  type Best = { legs: Candidate[]; chance: number; families: number };
+  const better = (entry: Best, held?: Best) =>
+    !held ||
+    entry.chance > held.chance + 1e-9 ||
+    (Math.abs(entry.chance - held.chance) <= 1e-9 && entry.families > held.families);
+  // Prefer a slip paying inside the band; one that overshoots is only the fallback.
+  let inBand: Best | undefined;
+  let overshoot: Best | undefined;
+  // Only used when no combination has landed in the band yet, so nothing can be pruned.
+  let budget = 2_000_000;
+
   const visit = (start: number, legs: Candidate[], odds: number, chance: number) => {
-    if (budget-- <= 0) return;
-    if (legs.length) {
-      const families = new Set(legs.map((leg) => familyOf(leg.key))).size;
-      const entry: Best = { legs, odds, chance, families };
-      if (odds >= SLIP_MIN_ODDS) {
-        const better =
-          !bestHit ||
-          chance > bestHit.chance + 1e-9 ||
-          (Math.abs(chance - bestHit.chance) <= 1e-9 && families > bestHit.families);
-        if (better) bestHit = entry;
-      } else if (!bestMiss || odds > bestMiss.odds) {
-        bestMiss = entry;
+    if (legs.length && odds >= SLIP_MIN_ODDS) {
+      const entry: Best = { legs, chance, families: new Set(legs.map((leg) => familyOf(leg.key))).size };
+      if (odds <= SLIP_MAX_ODDS) {
+        if (better(entry, inBand)) inBand = entry;
+      } else if (better(entry, overshoot)) {
+        overshoot = entry;
       }
+      return;
     }
-    // Once the target is reached, extra legs only lower the chance of winning.
-    if (legs.length === SLIP_MAX_LEGS || (legs.length && odds >= SLIP_MIN_ODDS)) return;
+    if (legs.length === SLIP_MAX_LEGS) return;
+    if (!inBand && budget-- <= 0) return;
     for (let i = start; i < pool.length; i += 1) {
       const next = pool[i];
+      // Pool is sorted by probability, so once a leg cannot beat the best, none after it can.
+      if (inBand && chance * next.conservative < inBand.chance - 1e-9) break;
       if (legs.some((leg) => leg.fixtureId === next.fixtureId)) continue;
       visit(i + 1, [...legs, next], odds * next.odds, chance * next.conservative);
     }
   };
   visit(0, [], 1, 1);
 
-  const chosen = (bestHit ?? bestMiss)?.legs ?? [];
-  return chosen
-    .sort((a, b) => b.conservative - a.conservative)
-    .map(({ score: _score, ...pick }) => pick);
+  return strip((inBand ?? overshoot)?.legs ?? highest);
 }
 
 export function combinedStats(picks: Pick[]) {

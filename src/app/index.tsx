@@ -92,7 +92,7 @@ export default function PicksScreen() {
 
         <Text style={styles.title}>{dayOffset === 0 ? 'Today’s slip' : 'Tomorrow’s slip'}</Text>
         <Text style={styles.subtitle}>
-          Games from all over the world, combined into one slip that pays about 1.50 or more using as
+          Games from all over the world, combined into one slip that pays between 1.40 and 1.50 using as
           few picks as possible — fewer picks means a better chance that every one wins. Once set, it
           never changes.
         </Text>
@@ -125,8 +125,18 @@ export default function PicksScreen() {
           <View style={styles.loading}>
             <ActivityIndicator color={PALETTE.primary} />
             <Text style={styles.loadingText}>
-              {brief ? 'Analysing recent results…' : 'Reading the odds…'}
+              {brief?.progress
+                ? `Checked ${brief.progress.done} of ${brief.progress.total} bets…`
+                : brief
+                  ? 'Analysing recent results…'
+                  : 'Reading the odds…'}
             </Text>
+            {brief?.progress?.best && (
+              <Text style={styles.loadingText}>
+                Strongest so far: {brief.progress.best.label}, {brief.progress.best.match} (
+                {formatPercent(brief.progress.best.chance)})
+              </Text>
+            )}
           </View>
         ) : (
           <>
