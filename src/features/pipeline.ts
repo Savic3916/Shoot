@@ -224,8 +224,9 @@ export async function buildBrief(
     loadPicks(),
     loadJson<string[]>(LOCKED_KEY, []),
   ]);
-  // A day only counts as locked if it actually has picks; an empty day is always worked out again.
-  const locked = lockedDays.includes(data.date) && picks0.some((pick) => pick.date === data.date);
+  // A day only counts as locked if it has picks in the current main/add-on format; an empty day or
+  // one saved by an older version is worked out again.
+  const locked = lockedDays.includes(data.date) && picks0.some((pick) => pick.date === data.date && pick.role);
   const learned0 = records0.length ? fitLearned(records0) : DEFAULT_LEARNED;
   onStage(compose(data, undefined, learned0, records0, picks0, locked, 'market', 0));
 
@@ -251,7 +252,7 @@ export async function buildBrief(
   if (!locked) {
     const latest = await loadJson<string[]>(LOCKED_KEY, []);
     const stored = latest.includes(data.date) ? await loadPicks() : [];
-    if (stored.some((pick) => pick.date === data.date)) {
+    if (stored.some((pick) => pick.date === data.date && pick.role)) {
       brief = { ...brief, picks: frozenPicks(stored, data.date), picksLocked: true };
       return { ...brief, track: trackRecord(settled.records, stored) };
     }
