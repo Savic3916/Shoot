@@ -17,7 +17,17 @@ import {
   type MatchRecord,
   type TrackRecord,
 } from './learning';
-import { buildSlip, rankCandidates, scoreOf, tierFor, type Candidate, type Pick } from './picks';
+import {
+  CONFIDENCE_FLOOR,
+  CONFIDENCE_LADDER,
+  SLIP_MIN_ODDS,
+  buildSlip,
+  rankCandidates,
+  scoreOf,
+  tierFor,
+  type Candidate,
+  type Pick,
+} from './picks';
 import { fitRatings, type Ratings } from './ratings';
 import { isEligibleCompetition } from './competitions';
 import { assessMatch, buildTeamHistory, type TeamHistory } from './risk';
@@ -79,6 +89,16 @@ async function withInsights(
   );
 }
 
+/** Strictest confidence bar first; relax only until the slip can reach the target odds. */
+function bestSlip(pool: Candidate[]): Pick[] {
+  let slip: Pick[] = [];
+  for (const bar of CONFIDENCE_LADDER) {
+    slip = buildSlip(pool.filter((item) => item.conservative >= bar));
+    if (slip.reduce((odds, pick) => odds * pick.odds, 1) >= SLIP_MIN_ODDS) break;
+  }
+  return slip;
+}
+
 /**
  * Shortlists the most probable bets of the day, gathers each team's recent form, head to head and
  * news for every one, and keeps only bets that recent form does not contradict. Odds of the final
@@ -97,7 +117,7 @@ async function selectVerifiedPicks(
     data.date,
     data.fixtures,
     analyses,
-    20,
+    40,
     (fixture) => risks.get(fixture.id)?.ok === true && isEligibleCompetition(fixture),
   );
   const checked = await Promise.all(
@@ -135,11 +155,20 @@ async function selectVerifiedPicks(
       } else {
         conservative -= 0.02; // too little recent data to confirm
       }
-      if (conservative < 0.7) return undefined;
+      if (conservative < CONFIDENCE_FLOOR) return undefined;
       return { ...candidate, insight, conservative, tier: tierFor(conservative), score: scoreOf(conservative, candidate.edge) };
     }),
   );
-  return buildSlip(checked.filter((item): item is Candidate => item !== undefined));
+  const verified = checked.filter((item): item is Candidate => item !== undefined);
+  const slip = bestSlip(verified);
+  if (slip.length) return slip;
+  // Last resort so no day is empty: every match is considered again without the form, news and
+  // risk filters, and the strongest picks are marked down for being unverified.
+  const fallback = rankCandidates(data.date, data.fixtures, analyses, 40).map((candidate): Candidate => {
+    const conservative = candidate.conservative - 0.04;
+    return { ...candidate, conservative, tier: tierFor(conservative), score: scoreOf(conservative, candidate.edge) };
+  });
+  return bestSlip(fallback.filter((item) => item.conservative >= CONFIDENCE_FLOOR));
 }
 
 function compose(

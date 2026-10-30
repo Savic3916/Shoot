@@ -4,15 +4,21 @@ import type { LoggedPick } from './learning';
 import { FAMILY_LABEL, familyOf, formatPercent, type MarketFamily } from './markets';
 
 /** The day's slip is built to pay at least this much, using as few legs as it takes. */
-export const SLIP_MIN_ODDS = 1.4;
-const SLIP_MAX_LEGS = 5;
+export const SLIP_MIN_ODDS = 1.5;
+const SLIP_MAX_LEGS = 10;
 const SLIP_POOL = 16;
-const MIN_CONSERVATIVE_PROBABILITY = 0.7;
-const SHORTLIST_SIZE = 20;
+/**
+ * Confidence bars tried in order. The slip is built at the strictest bar that can reach the target
+ * odds, so a day is only ever filled with weaker picks when stronger ones cannot do the job.
+ */
+export const CONFIDENCE_LADDER = [0.78, 0.72, 0.66, 0.6];
+export const CONFIDENCE_FLOOR = CONFIDENCE_LADDER[CONFIDENCE_LADDER.length - 1];
+const SHORTLIST_SIZE = 40;
 const MAX_PER_FIXTURE = 2;
 const MIN_PRICE = 1.05;
 const ESTIMATED_MARGIN = 0.05;
 const SKIPPED = new Set(['draw', 'dc12']);
+const AVAILABLE_ON_BOOKIE = /^(home|away|dc1x|dcx2|btts|nobtts|[ou](15|25|35|45))$/;
 
 export type Pick = LoggedPick & {
   /** Probability after penalising model disagreement and thin evidence. */
@@ -52,18 +58,17 @@ export function rankCandidates(
     if (!analysis || analysis.quality < 0.5 || !isEligible(fixture)) continue;
 
     for (const line of analysis.lines) {
-      // +/-0.5 handicaps are "win" / "win or draw" renamed. +/-1.5 handicaps won only 30% when a
-      // red card appeared in testing, so they are left out entirely.
-      if (SKIPPED.has(line.key) || /^ahA?:-?(0|1)\.5$/.test(line.key)) continue;
-      // Team-to-score markets won only ~65% when the model said ~85% in testing; draw-no-bet is unproven.
-      if (/^(hs|as)\d$|^dnb/.test(line.key)) continue;
+      // Only bets SportyBet lists on virtually every match: 1X2, double chance, GG/NG and
+      // over/under 1.5-4.5. Handicaps, odd total lines, team-to-score and draw-no-bet are left out
+      // (they were also unreliable in testing, and are often missing from the bookie).
+      if (SKIPPED.has(line.key) || !AVAILABLE_ON_BOOKIE.test(line.key)) continue;
 
       const m = analysis.marketProbs?.[line.key];
       const s = analysis.statProbs?.[line.key];
       let conservative = line.probability;
       if (m !== undefined && s !== undefined) conservative -= 0.75 * Math.abs(m - s);
       else if (m === undefined) conservative -= 0.06; // stats only: no market cross-check
-      if (conservative < MIN_CONSERVATIVE_PROBABILITY) continue;
+      if (conservative < CONFIDENCE_FLOOR) continue;
 
       const priceIsEstimate = !line.bookOdds;
       const odds = line.bookOdds ?? Math.max(1.01, (1 - ESTIMATED_MARGIN) / line.probability);

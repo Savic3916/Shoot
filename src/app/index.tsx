@@ -92,7 +92,7 @@ export default function PicksScreen() {
 
         <Text style={styles.title}>{dayOffset === 0 ? 'Today’s slip' : 'Tomorrow’s slip'}</Text>
         <Text style={styles.subtitle}>
-          Games from all over the world, combined into one slip that pays about 1.40 or more using as
+          Games from all over the world, combined into one slip that pays about 1.50 or more using as
           few picks as possible — fewer picks means a better chance that every one wins. Once set, it
           never changes.
         </Text>
