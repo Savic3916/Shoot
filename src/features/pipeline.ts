@@ -117,7 +117,7 @@ async function selectVerifiedPicks(
     data.date,
     data.fixtures,
     analyses,
-    40,
+    80,
     (fixture) => risks.get(fixture.id)?.ok === true && isEligibleCompetition(fixture),
   );
   const checked = await Promise.all(
@@ -164,7 +164,7 @@ async function selectVerifiedPicks(
   if (slip.length) return slip;
   // Last resort so no day is empty: every match is considered again without the form, news and
   // risk filters, and the strongest picks are marked down for being unverified.
-  const fallback = rankCandidates(data.date, data.fixtures, analyses, 40).map((candidate): Candidate => {
+  const fallback = rankCandidates(data.date, data.fixtures, analyses, 80).map((candidate): Candidate => {
     const conservative = candidate.conservative - 0.04;
     return { ...candidate, conservative, tier: tierFor(conservative), score: scoreOf(conservative, candidate.edge) };
   });

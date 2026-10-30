@@ -6,14 +6,14 @@ import { FAMILY_LABEL, familyOf, formatPercent, type MarketFamily } from './mark
 /** The day's slip is built to pay at least this much, using as few legs as it takes. */
 export const SLIP_MIN_ODDS = 1.5;
 const SLIP_MAX_LEGS = 10;
-const SLIP_POOL = 16;
+const SLIP_POOL = 40;
 /**
  * Confidence bars tried in order. The slip is built at the strictest bar that can reach the target
  * odds, so a day is only ever filled with weaker picks when stronger ones cannot do the job.
  */
 export const CONFIDENCE_LADDER = [0.78, 0.72, 0.66, 0.6];
 export const CONFIDENCE_FLOOR = CONFIDENCE_LADDER[CONFIDENCE_LADDER.length - 1];
-const SHORTLIST_SIZE = 40;
+const SHORTLIST_SIZE = 80;
 const MAX_PER_FIXTURE = 2;
 const MIN_PRICE = 1.05;
 const ESTIMATED_MARGIN = 0.05;
@@ -135,7 +135,10 @@ export function buildSlip(candidates: Candidate[]): Pick[] {
   let bestHit: Best | undefined;
   let bestMiss: Best | undefined;
 
+  // Candidates are tried best-first, so a cap on combinations keeps a huge pool of low prices quick.
+  let budget = 400_000;
   const visit = (start: number, legs: Candidate[], odds: number, chance: number) => {
+    if (budget-- <= 0) return;
     if (legs.length) {
       const families = new Set(legs.map((leg) => familyOf(leg.key))).size;
       const entry: Best = { legs, odds, chance, families };
@@ -149,7 +152,8 @@ export function buildSlip(candidates: Candidate[]): Pick[] {
         bestMiss = entry;
       }
     }
-    if (legs.length === SLIP_MAX_LEGS) return;
+    // Once the target is reached, extra legs only lower the chance of winning.
+    if (legs.length === SLIP_MAX_LEGS || (legs.length && odds >= SLIP_MIN_ODDS)) return;
     for (let i = start; i < pool.length; i += 1) {
       const next = pool[i];
       if (legs.some((leg) => leg.fixtureId === next.fixtureId)) continue;
