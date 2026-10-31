@@ -94,8 +94,8 @@ export default function PicksScreen() {
         <Text style={styles.title}>{dayOffset === 0 ? 'Today’s bet' : 'Tomorrow’s bet'}</Text>
         <Text style={styles.subtitle}>
           Every game of the day is analysed, then every single, pair and triple of bets is compared to
-          find the slip paying 1.50 or more with the best chance of winning. Each refresh searches
-          again and swaps in a clearly safer slip if one turns up before kick-off.
+          find the slip paying 1.50 or more with the best chance of winning. Once set, it is fixed for
+          the day and never changes on refresh.
         </Text>
 
         <View style={styles.tabs}>
@@ -142,18 +142,6 @@ export default function PicksScreen() {
           </View>
         ) : (
           <>
-            {brief.progress && (
-              <Text style={styles.status}>
-                Re-checking all matches for a safer slip… {brief.progress.done} of {brief.progress.total}
-              </Text>
-            )}
-            {brief.replaced && stats && (
-              <Text style={styles.status}>
-                Replaced: a re-check of every match found a safer slip. The earlier one paid{' '}
-                {brief.replaced.odds.toFixed(2)} with a {formatPercent(brief.replaced.chance)} chance; this one has{' '}
-                {formatPercent(stats.chance)}.
-              </Text>
-            )}
             {mainPicks.map((pick, index) => (
               <PickCard key={pick.fixtureId} pick={pick} index={index} />
             ))}
@@ -234,7 +222,6 @@ const styles = StyleSheet.create({
   combinedLabel: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
   combinedSub: { color: '#B9D6CF', fontSize: 13, marginTop: 3 },
   combinedOdds: { color: '#FFFFFF', fontSize: 32, fontWeight: '800', letterSpacing: -0.8 },
-  status: { color: PALETTE.primary, fontSize: 13, fontWeight: '600', lineHeight: 19, marginBottom: 12 },
   record: { color: PALETTE.ink, fontSize: 13, lineHeight: 19, marginTop: 16 },
   disclaimer: { color: PALETTE.faint, fontSize: 12, lineHeight: 18, marginTop: 24 },
 });

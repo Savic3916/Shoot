@@ -19,7 +19,6 @@ import {
 } from './learning';
 import {
   CONFIDENCE_FLOOR,
-  TARGET_ODDS,
   chooseDay,
   combinedStats,
   rankCandidates,
@@ -34,6 +33,7 @@ import { assessMatch, buildTeamHistory, historySupport, type TeamHistory } from 
 import { loadJson, saveJson } from '@/lib/storage';
 
 const LOCKED_KEY = 'learn:locked-days:v2';
+const COVERAGE_PREFIX = 'learn:coverage:';
 /** Results needed (both teams together) before the history check may veto or move a bet. */
 const MIN_FORM_GAMES = 10;
 const MIN_FORM_SUPPORT = 0.55;
@@ -42,7 +42,7 @@ const FORM_WEIGHT = 0.25;
 export type Brief = {
   analyses: Map<string, MatchAnalysis>;
   picks: Pick[];
-  /** True when the day's picks were generated earlier; a refresh only replaces them with a clearly safer slip. */
+  /** True when the day's picks were generated earlier and are frozen; refreshing never changes them. */
   picksLocked: boolean;
   /** False while the first full analysis for the day is still running (no picks are shown yet). */
   picksReady: boolean;
@@ -55,8 +55,6 @@ export type Brief = {
   progress?: Progress;
   /** How much of the day was searched for the current picks. */
   coverage?: Coverage;
-  /** Set when a re-check found a clearly safer slip and it replaced the earlier one. */
-  replaced?: { odds: number; chance: number };
 };
 
 export type Progress = {
@@ -76,9 +74,6 @@ export type Coverage = {
   /** Bets that passed every check and went into the slip search. */
   bets: number;
 };
-
-/** A locked slip is only replaced by one at least this much more likely to win. */
-const REPLACE_MARGIN = 0.02;
 
 function hasStarted(fixture: FootballMatch) {
   return fixture.status !== 'NOT STARTED' || Date.parse(fixture.utcDate) <= Date.now();
@@ -131,10 +126,7 @@ async function selectVerifiedPicks(
   history: TeamHistory,
   signal?: AbortSignal,
   onProgress?: (progress: Progress) => void,
-  upcomingOnly = false,
 ): Promise<{ picks: Pick[]; coverage: Coverage }> {
-  // A replacement slip must still be bettable, so a re-check skips matches that have kicked off.
-  const eligible = (fixture: FootballMatch) => isEligibleCompetition(fixture) && !(upcomingOnly && hasStarted(fixture));
   // Red-card and fatigue risk are measured for every match up front.
   const byId = new Map(data.fixtures.map((fixture) => [fixture.id, fixture]));
   const formChecked = new Set<string>();
@@ -145,7 +137,7 @@ async function selectVerifiedPicks(
     data.fixtures,
     analyses,
     Infinity,
-    eligible,
+    isEligibleCompetition,
   ).flatMap((candidate): Candidate[] => {
     // Risk lowers a match's chance instead of removing it, so every match is compared; a match
     // whose risk cannot be measured is marked down less than one with a known high risk.
@@ -244,7 +236,7 @@ async function selectVerifiedPicks(
     data.fixtures,
     analyses,
     Infinity,
-    (fixture) => !(upcomingOnly && hasStarted(fixture)),
+    undefined,
     0.4,
     0,
   ).map((candidate): Candidate => {
@@ -309,36 +301,17 @@ export async function buildBrief(
   const learned = fitLearned(settled.records);
   let brief = compose(data, ratings, learned, settled.records, settled.picks, locked, 'full', results.length);
   const history = buildTeamHistory(results);
-  let replaced = false;
   if (locked) {
-    // Every refresh searches all matches again. While none of the slip's games has kicked off, a
-    // slip that is clearly more likely to win, and still pays the target, replaces it.
-    const frozen = brief.picks;
-    const notStarted = (pick: Pick) => Date.parse(pick.utcDate) > Date.now();
-    if (frozen.length && frozen.every(notStarted)) {
-      const shown = brief;
-      const fresh = await selectVerifiedPicks(data, brief.analyses, history, signal, (progress) =>
-        onStage({ ...shown, progress }), true);
-      const before = combinedStats(frozen);
-      const after = fresh.picks.length ? combinedStats(fresh.picks) : undefined;
-      const better =
-        after &&
-        fresh.picks.every(notStarted) &&
-        after.odds >= Math.min(TARGET_ODDS, before.odds) &&
-        after.chance >= before.chance + REPLACE_MARGIN;
-      brief = { ...brief, coverage: fresh.coverage };
-      if (better) {
-        replaced = true;
-        brief = { ...brief, picks: fresh.picks, replaced: { odds: before.odds, chance: before.chance } };
-      }
-    }
-    if (!replaced) brief = { ...brief, picks: await withInsights(brief.picks, data, brief.analyses, signal) };
+    // The day's slip was fixed when it was first worked out; a refresh only reloads it.
+    const coverage = await loadJson<Coverage | null>(COVERAGE_PREFIX + data.date, null);
+    brief = { ...brief, coverage: coverage ?? undefined, picks: await withInsights(brief.picks, data, brief.analyses, signal) };
   } else {
     const shown = brief;
     const fresh = await selectVerifiedPicks(data, brief.analyses, history, signal, (progress) =>
       onStage({ ...shown, picksReady: false, progress }),
     );
     brief = { ...brief, picks: fresh.picks, coverage: fresh.coverage };
+    await saveJson(COVERAGE_PREFIX + data.date, fresh.coverage);
   }
 
   // A concurrent run (e.g. a quick refresh) may have locked the day while this one was computing.
@@ -364,7 +337,7 @@ export async function buildBrief(
   const hadInsight = (id: string) =>
     settled.picks.some((pick) => pick.date === data.date && pick.fixtureId === id && pick.insight);
   const gainedInsight = locked && brief.picks.some((pick) => pick.insight && !hadInsight(pick.fixtureId));
-  if (!locked || gainedInsight || replaced) {
+  if (!locked || gainedInsight) {
     const others = settled.picks.filter((pick) => pick.date !== data.date);
     await savePicks([...others, ...brief.picks.map(({ edge: _e, ...pick }) => pick)]);
     // Only a day that has picks is locked; an empty day is worked out again next time.
