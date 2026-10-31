@@ -3,9 +3,12 @@ import type { FootballMatch } from './football-data';
 import type { LoggedPick } from './learning';
 import { FAMILY_LABEL, familyOf, formatPercent, type MarketFamily } from './markets';
 
-/** The day's main bet is one game paying inside this band; an optional add-on pays inside the other. */
-export const MAIN_ODDS: [number, number] = [1.2, 1.3];
-export const ADDON_ODDS: [number, number] = [1.1, 1.15];
+/** The day's slip must pay at least this much; above the ceiling the extra price only costs chance. */
+export const TARGET_ODDS = 1.5;
+const MAX_SLIP_ODDS = 1.8;
+const MAX_LEGS = 3;
+/** Legs considered when searching combinations (C(45,3) is still under 15,000 slips). */
+const COMBO_POOL = 45;
 /** Lowest chance a bet may have to be offered (the strongest bet inside the band always wins). */
 export const CONFIDENCE_FLOOR = 0.6;
 const SHORTLIST_SIZE = Infinity;
@@ -120,32 +123,43 @@ export function rankCandidates(
 }
 
 /**
- * Picks the single most probable game paying inside the odds band. A bet that pays more than its
- * band is only the fallback when nothing fits, and a bet that pays less never is: a higher price
- * with a lower chance is a different bet, not a safer one.
- */
-export function bestSingle(pool: Candidate[], [low, high]: [number, number], strict = false): Candidate | undefined {
-  const byChance = (a: Candidate, b: Candidate) => b.conservative - a.conservative || b.odds - a.odds;
-  const inBand = pool.filter((item) => item.odds >= low && item.odds <= high).sort(byChance);
-  if (inBand.length || strict) return inBand[0];
-  const above = pool.filter((item) => item.odds > high).sort(byChance);
-  return above[0] ?? [...pool].sort((a, b) => b.odds - a.odds)[0];
-}
-
-/**
- * The day's bets: one main game, plus (if a different game pays inside the add-on band) an
- * optional add-on. Every game of the day was already scored, so the best one overall wins.
+ * Searches every single bet, pair and triple across different matches and keeps the slip paying at
+ * least the target with the highest chance that all of its legs win. Long odds on one match and
+ * short odds on several are therefore compared on equal terms instead of assuming a format.
  */
 export function chooseDay(pool: Candidate[]): Pick[] {
-  const strip = ({ score: _score, ...pick }: Candidate, role: 'main' | 'addon'): Pick => ({ ...pick, role });
-  const main = bestSingle(pool, MAIN_ODDS);
-  if (!main) return [];
-  const addon = bestSingle(
-    pool.filter((item) => item.fixtureId !== main.fixtureId),
-    ADDON_ODDS,
-    true,
-  );
-  return [strip(main, 'main'), ...(addon ? [strip(addon, 'addon')] : [])];
+  const legs = [...pool].sort((a, b) => b.conservative - a.conservative).slice(0, COMBO_POOL);
+
+  type Slip = { items: Candidate[]; odds: number; chance: number };
+  const slips: Slip[] = [];
+  const extend = (items: Candidate[], start: number) => {
+    if (items.length) {
+      slips.push({
+        items,
+        odds: items.reduce((product, item) => product * item.odds, 1),
+        chance: items.reduce((product, item) => product * item.conservative, 1),
+      });
+    }
+    if (items.length === MAX_LEGS) return;
+    for (let i = start; i < legs.length; i++) {
+      if (items.some((item) => item.fixtureId === legs[i].fixtureId)) continue;
+      extend([...items, legs[i]], i + 1);
+    }
+  };
+  extend([], 0);
+  if (!slips.length) return [];
+
+  // Prefer the slip that reaches the target with the best chance; otherwise get as close as the
+  // pool allows, relaxing the price in steps rather than returning nothing.
+  const byChance = (a: Slip, b: Slip) => b.chance - a.chance || a.items.length - b.items.length;
+  for (const floor of [TARGET_ODDS, 1.4, 1.3, 1.2, 0]) {
+    const fits = slips.filter((slip) => slip.odds >= floor && slip.odds <= MAX_SLIP_ODDS).sort(byChance);
+    if (fits.length) {
+      return fits[0].items.map(({ score: _score, ...pick }): Pick => ({ ...pick, role: 'main' }));
+    }
+  }
+  const top = [...slips].sort((a, b) => b.odds - a.odds)[0];
+  return top.items.map(({ score: _score, ...pick }): Pick => ({ ...pick, role: 'main' }));
 }
 
 export function combinedStats(picks: Pick[]) {
