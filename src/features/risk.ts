@@ -1,5 +1,6 @@
 import type { FootballMatch } from './football-data';
 import type { PastResult } from './history';
+import { outcomeOf } from './markets';
 
 /**
  * Match-level risks a bet can be undone by even when the model is right: red cards, fatigue and
@@ -50,6 +51,52 @@ function discipline(history: TeamHistory, teamId: string, before: string) {
   const last = games[games.length - 1];
   const restDays = last ? (Date.parse(before) - Date.parse(last.utcDate)) / 86_400_000 : undefined;
   return { redRate: reds / withCards.length, yellowRate: yellows / withCards.length, restDays, sample: withCards.length };
+}
+
+const FORM_WINDOW = 10;
+const FORM_HALF_LIFE_GAMES = 6;
+/** A game at the same venue as this fixture (home side at home, away side away) counts fully. */
+const OTHER_VENUE_WEIGHT = 0.6;
+
+export type HistorySupport = {
+  /** Smoothed, recency- and venue-weighted share of recent games this bet would have won. */
+  support: number;
+  hits: number;
+  games: number;
+};
+
+/**
+ * How often this exact bet would have won in each team's last ten games from the downloaded
+ * history, home team from its own side and away team from its own side. Recent games and games at
+ * the same venue count more. Unlike the five-game check this needs no network, so it runs on
+ * every bet of every match.
+ */
+export function historySupport(key: string, fixture: FootballMatch, history: TeamHistory): HistorySupport | undefined {
+  let weightedHits = 0;
+  let weightedGames = 0;
+  let hits = 0;
+  let games = 0;
+  for (const side of ['home', 'away'] as const) {
+    const teamId = side === 'home' ? fixture.homeTeamId : fixture.awayTeamId;
+    const recent = (history.get(teamId) ?? []).filter((game) => game.utcDate < fixture.utcDate).slice(-FORM_WINDOW);
+    recent.forEach((game, index) => {
+      const atHome = game.homeTeamId === teamId;
+      const goalsFor = atHome ? game.homeGoals : game.awayGoals;
+      const goalsAgainst = atHome ? game.awayGoals : game.homeGoals;
+      const won = side === 'home' ? outcomeOf(key, goalsFor, goalsAgainst) : outcomeOf(key, goalsAgainst, goalsFor);
+      if (won === null) return;
+      const age = recent.length - 1 - index;
+      const weight = 0.5 ** (age / FORM_HALF_LIFE_GAMES) * (atHome === (side === 'home') ? 1 : OTHER_VENUE_WEIGHT);
+      weightedGames += weight;
+      games += 1;
+      if (won) {
+        weightedHits += weight;
+        hits += 1;
+      }
+    });
+  }
+  if (!games) return undefined;
+  return { support: (weightedHits + 1) / (weightedGames + 2), hits, games };
 }
 
 export function assessMatch(fixture: FootballMatch, history: TeamHistory): RiskCheck {

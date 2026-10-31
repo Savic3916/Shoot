@@ -28,10 +28,14 @@ import {
 } from './picks';
 import { fitRatings, type Ratings } from './ratings';
 import { isEligibleCompetition } from './competitions';
-import { assessMatch, buildTeamHistory, type TeamHistory } from './risk';
+import { assessMatch, buildTeamHistory, historySupport, type TeamHistory } from './risk';
 import { loadJson, saveJson } from '@/lib/storage';
 
 const LOCKED_KEY = 'learn:locked-days:v2';
+/** Results needed (both teams together) before the history check may veto or move a bet. */
+const MIN_FORM_GAMES = 10;
+const MIN_FORM_SUPPORT = 0.55;
+const FORM_WEIGHT = 0.25;
 
 export type Brief = {
   analyses: Map<string, MatchAnalysis>;
@@ -108,6 +112,9 @@ async function selectVerifiedPicks(
   onProgress?: (progress: Progress) => void,
 ): Promise<Pick[]> {
   // Red-card and fatigue risk are measured for every match up front.
+  const byId = new Map(data.fixtures.map((fixture) => [fixture.id, fixture]));
+  const formChecked = new Set<string>();
+  const keyOf = (candidate: Candidate) => `${candidate.fixtureId}:${candidate.key}`;
   const risks = new Map(data.fixtures.map((fixture) => [fixture.id, assessMatch(fixture, history)]));
   const shortlist = rankCandidates(
     data.date,
@@ -115,17 +122,29 @@ async function selectVerifiedPicks(
     analyses,
     Infinity,
     isEligibleCompetition,
-  ).map((candidate): Candidate => {
+  ).flatMap((candidate): Candidate[] => {
     // Risk lowers a match's chance instead of removing it, so every match is compared; a match
     // whose risk cannot be measured is marked down less than one with a known high risk.
     const risk = risks.get(candidate.fixtureId);
     const penalty = risk?.ok ? 0 : risk?.failures.some((f) => f.startsWith('Red-card risk cannot')) ? 0.03 : 0.08;
-    const conservative = candidate.conservative - penalty;
-    return { ...candidate, conservative, tier: tierFor(conservative), score: scoreOf(conservative, candidate.edge) };
-  }).filter((candidate) => candidate.conservative >= CONFIDENCE_FLOOR);
+    let conservative = candidate.conservative - penalty;
+    // Every bet of every match is checked against both teams' last ten results before anything is
+    // downloaded: a bet recent results contradict is dropped, one they back is moved toward them.
+    const fixture = byId.get(candidate.fixtureId);
+    const form = fixture ? historySupport(candidate.key, fixture, history) : undefined;
+    const reasons = [...candidate.reasons];
+    if (form && form.games >= MIN_FORM_GAMES) {
+      if (form.support < MIN_FORM_SUPPORT) return [];
+      conservative = (1 - FORM_WEIGHT) * conservative + FORM_WEIGHT * form.support;
+      formChecked.add(keyOf(candidate));
+      reasons.push(`Check: this exact bet would have won in ${form.hits} of the last ${form.games} games played by these two teams.`);
+    }
+    if (conservative < CONFIDENCE_FLOOR) return [];
+    return [{ ...candidate, reasons, conservative, tier: tierFor(conservative), score: scoreOf(conservative, candidate.edge) }];
+  });
   // Every candidate is checked, a few at a time so the free feeds are not flooded.
   const checkOne = async (candidate: Candidate): Promise<Candidate | undefined> => {
-    const fixture = data.fixtures.find((item) => item.id === candidate.fixtureId);
+    const fixture = byId.get(candidate.fixtureId);
     const analysis = analyses.get(candidate.fixtureId);
     if (!fixture || !analysis) return undefined;
     const insight = await fetchInsight(fixture, candidate, analysis, signal).catch(() => undefined);
@@ -146,7 +165,12 @@ async function selectVerifiedPicks(
     );
     const { hits, n } = formSupport(candidate.key, insight);
     let conservative = candidate.conservative;
-    if (n >= 6) {
+    if (formChecked.has(keyOf(candidate))) {
+      // Already weighed against the longer downloaded history; the five-game check would count
+      // the same games twice.
+      const check = candidate.reasons.find((reason) => reason.startsWith('Check:'));
+      if (check) insight.betReasons.splice(Math.max(0, insight.betReasons.length - 1), 0, check);
+    } else if (n >= 6) {
       const support = (hits + 1) / (n + 2);
       if (support < 0.55) return undefined; // recent form contradicts the model
       conservative = 0.75 * conservative + 0.25 * support;
