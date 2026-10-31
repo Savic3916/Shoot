@@ -14,6 +14,7 @@ const TIER_COLOR: Record<string, string> = {
 
 export function PickCard({ pick, index }: { pick: Pick; index: number }) {
   const [open, setOpen] = useState(false);
+  const [startedAtRender] = useState(() => Date.parse(pick.utcDate) <= Date.now());
   const tier = TIER_COLOR[pick.tier] ?? PALETTE.muted;
   const kickoff = new Date(pick.utcDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
@@ -32,7 +33,7 @@ export function PickCard({ pick, index }: { pick: Pick; index: number }) {
 
       <Text style={styles.selection}>{pick.label}</Text>
       <Text style={styles.match}>{pick.home} vs {pick.away}</Text>
-      <Text style={styles.meta}>{kickoff}{Date.parse(pick.utcDate) <= Date.now() ? ' · already started' : ''}</Text>
+      <Text style={styles.meta}>{kickoff}{startedAtRender ? ' · already started' : ''}</Text>
 
       <View style={styles.predicted}>
         <Text style={styles.predictedLabel}>Predicted score</Text>

@@ -212,22 +212,17 @@ function FormTab({ insight, width }: { insight: PickInsight; width: number }) {
 function H2HTab({ insight }: { insight: PickInsight }) {
   const games: H2HGame[] = insight.h2h;
   if (!games.length) return <Text style={styles.empty}>No recent meetings found between these teams.</Text>;
-  let homeWins = 0;
-  let draws = 0;
-  let awayWins = 0;
-  let goals = 0;
-  let btts = 0;
   const rows = games.map((game) => {
     const homeIsHostHere = game.home === insight.home.name;
     const ours = homeIsHostHere ? game.homeGoals : game.awayGoals;
     const theirs = homeIsHostHere ? game.awayGoals : game.homeGoals;
-    goals += game.homeGoals + game.awayGoals;
-    if (game.homeGoals > 0 && game.awayGoals > 0) btts += 1;
-    if (ours > theirs) homeWins += 1;
-    else if (ours < theirs) awayWins += 1;
-    else draws += 1;
     return { game, winner: ours > theirs ? 'home' : ours < theirs ? 'away' : 'draw' };
   });
+  const homeWins = rows.filter((row) => row.winner === 'home').length;
+  const awayWins = rows.filter((row) => row.winner === 'away').length;
+  const draws = rows.length - homeWins - awayWins;
+  const goals = games.reduce((sum, game) => sum + game.homeGoals + game.awayGoals, 0);
+  const btts = games.filter((game) => game.homeGoals > 0 && game.awayGoals > 0).length;
   return (
     <View style={styles.gap}>
       <TeamLegend home={insight.home.name} away={insight.away.name} />
