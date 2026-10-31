@@ -32,7 +32,7 @@ import { isEligibleCompetition } from './competitions';
 import { assessMatch, buildTeamHistory, historySupport, type TeamHistory } from './risk';
 import { loadJson, saveJson } from '@/lib/storage';
 
-const LOCKED_KEY = 'learn:locked-days:v2';
+const LOCKED_KEY = 'learn:locked-days:v3';
 const COVERAGE_PREFIX = 'learn:coverage:';
 /** Results needed (both teams together) before the history check may veto or move a bet. */
 const MIN_FORM_GAMES = 10;

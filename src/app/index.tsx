@@ -93,9 +93,9 @@ export default function PicksScreen() {
 
         <Text style={styles.title}>{dayOffset === 0 ? 'Today’s bet' : 'Tomorrow’s bet'}</Text>
         <Text style={styles.subtitle}>
-          Every game of the day is analysed, then every single, pair and triple of bets is compared to
-          find the slip paying 1.50 or more with the best chance of winning. Once set, it is fixed for
-          the day and never changes on refresh.
+          Every game of the day is analysed, then every pair of bets is compared to find the two games
+          that together pay 1.50 or more with the best chance that both win. Once set, the pair is fixed
+          for the day and never changes on refresh.
         </Text>
 
         <View style={styles.tabs}>
