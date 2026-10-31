@@ -1,7 +1,7 @@
 import type { MatchAnalysis } from './analysis';
 import type { FootballMatch } from './football-data';
 import type { LoggedPick } from './learning';
-import { FAMILY_LABEL, familyOf, formatPercent, type MarketFamily } from './markets';
+import { FAMILY_LABEL, familyOf, formatPercent } from './markets';
 
 /** The day's slip must pay at least this much; above the ceiling the extra price only costs chance. */
 export const TARGET_ODDS = 1.5;
@@ -12,7 +12,6 @@ const COMBO_POOL = 45;
 /** Lowest chance a bet may have to be offered (the strongest bet inside the band always wins). */
 export const CONFIDENCE_FLOOR = 0.6;
 const SHORTLIST_SIZE = Infinity;
-const MAX_PER_FIXTURE = 2;
 const MIN_PRICE = 1.05;
 const ESTIMATED_MARGIN = 0.05;
 const SKIPPED = new Set(['draw', 'dc12']);
@@ -50,6 +49,7 @@ export function rankCandidates(
   isEligible: (fixture: FootballMatch) => boolean = () => true,
   minProbability = CONFIDENCE_FLOOR,
   minQuality = 0.5,
+  maxPerFixture = Infinity,
 ): Candidate[] {
   const candidates: Candidate[] = [];
 
@@ -114,7 +114,7 @@ export function rankCandidates(
   const perFixture = new Map<string, number>();
   for (const candidate of candidates) {
     const used = perFixture.get(candidate.fixtureId) ?? 0;
-    if (used >= MAX_PER_FIXTURE) continue;
+    if (used >= maxPerFixture) continue;
     perFixture.set(candidate.fixtureId, used + 1);
     shortlist.push(candidate);
     if (shortlist.length === limit) break;

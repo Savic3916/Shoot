@@ -127,7 +127,7 @@ export default function PicksScreen() {
             <ActivityIndicator color={PALETTE.primary} />
             <Text style={styles.loadingText}>
               {brief?.progress
-                ? `Checked ${brief.progress.done} of ${brief.progress.total} bets…`
+                ? `Checked ${brief.progress.done} of ${brief.progress.total} matches…`
                 : brief
                   ? 'Analysing recent results…'
                   : 'Reading the odds…'}

@@ -428,6 +428,31 @@ function verdictFor(label: string, probability: number, analysis: MatchAnalysis,
   );
 }
 
+type Feeds = [Record<string, unknown>, PromiseSettledResult<Record<string, unknown>>, PromiseSettledResult<Record<string, unknown>>];
+const feedCache = new Map<string, Promise<Feeds | undefined>>();
+const FEED_CACHE_SIZE = 400;
+
+/**
+ * Downloads a match's summary and both teams' news once; every bet on the same match reuses it,
+ * so checking all bet types of a match costs no more requests than checking one.
+ */
+function matchFeeds(fixture: FootballMatch, signal?: AbortSignal): Promise<Feeds | undefined> {
+  const cached = feedCache.get(fixture.id);
+  if (cached) return cached;
+  const request = Promise.allSettled([
+    getJson(`summary?event=${fixture.id}`, signal),
+    getJson(`news?team=${fixture.homeTeamId}&limit=20`, signal),
+    getJson(`news?team=${fixture.awayTeamId}&limit=20`, signal),
+  ]).then(([summary, home, away]): Feeds | undefined =>
+    summary.status === 'fulfilled' ? [summary.value, home, away] : undefined,
+  );
+  feedCache.set(fixture.id, request);
+  // A failed or aborted download is forgotten so the next run tries again.
+  request.then((feeds) => { if (!feeds) feedCache.delete(fixture.id); });
+  if (feedCache.size > FEED_CACHE_SIZE) feedCache.delete(feedCache.keys().next().value!);
+  return request;
+}
+
 /** Fetches and assembles the evidence for one pick; resolves undefined if the feed is unreachable. */
 export async function fetchInsight(
   fixture: FootballMatch,
@@ -435,13 +460,9 @@ export async function fetchInsight(
   analysis: MatchAnalysis,
   signal?: AbortSignal,
 ): Promise<PickInsight | undefined> {
-  const [summaryResult, homeNews, awayNews] = await Promise.allSettled([
-    getJson(`summary?event=${fixture.id}`, signal),
-    getJson(`news?team=${fixture.homeTeamId}&limit=20`, signal),
-    getJson(`news?team=${fixture.awayTeamId}&limit=20`, signal),
-  ]);
-  if (summaryResult.status !== 'fulfilled') return undefined;
-  const summary = summaryResult.value;
+  const raw = await matchFeeds(fixture, signal);
+  if (!raw) return undefined;
+  const [summary, homeNews, awayNews] = raw;
 
   const build = (id: string, name: string, news: PromiseSettledResult<Record<string, unknown>>): TeamInsight => ({
     id,

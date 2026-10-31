@@ -142,7 +142,7 @@ async function selectVerifiedPicks(
     if (conservative < CONFIDENCE_FLOOR) return [];
     return [{ ...candidate, reasons, conservative, tier: tierFor(conservative), score: scoreOf(conservative, candidate.edge) }];
   });
-  // Every candidate is checked, a few at a time so the free feeds are not flooded.
+  // Every candidate is checked against team news and, where history was thin, recent form.
   const checkOne = async (candidate: Candidate): Promise<Candidate | undefined> => {
     const fixture = byId.get(candidate.fixtureId);
     const analysis = analyses.get(candidate.fixtureId);
@@ -185,9 +185,13 @@ async function selectVerifiedPicks(
     if (conservative < CONFIDENCE_FLOOR) return undefined;
     return { ...candidate, insight, conservative, tier: tierFor(conservative), score: scoreOf(conservative, candidate.edge) };
   };
+  // Matches are checked ten at a time so the free feeds are not flooded; all bets of a match share
+  // one download.
+  const matchIds = [...new Set(shortlist.map((candidate) => candidate.fixtureId))];
   const checked: (Candidate | undefined)[] = [];
-  for (let i = 0; i < shortlist.length; i += 10) {
-    checked.push(...(await Promise.all(shortlist.slice(i, i + 10).map(checkOne))));
+  for (let i = 0; i < matchIds.length; i += 10) {
+    const batch = new Set(matchIds.slice(i, i + 10));
+    checked.push(...(await Promise.all(shortlist.filter((item) => batch.has(item.fixtureId)).map(checkOne))));
     // Running best: every game checked so far is compared, so a stronger bet further down the
     // list replaces an earlier one.
     const top = checked.reduce<Candidate | undefined>(
@@ -195,8 +199,8 @@ async function selectVerifiedPicks(
       undefined,
     );
     onProgress?.({
-      done: Math.min(i + 10, shortlist.length),
-      total: shortlist.length,
+      done: Math.min(i + 10, matchIds.length),
+      total: matchIds.length,
       best: top && { label: top.label, match: `${top.home} vs ${top.away}`, chance: top.conservative },
     });
   }
