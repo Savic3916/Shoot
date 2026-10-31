@@ -516,3 +516,38 @@ export function formSupport(key: string, insight: PickInsight): { hits: number; 
   }
   return { hits, n };
 }
+
+export type LineupCheck = {
+  /** False until both clubs have named their starting eleven (about an hour before kick-off). */
+  announced: boolean;
+  /** Key players (top scorer, top assister) who are not in their club's starting eleven. */
+  missing: { team: string; name: string; note: string }[];
+};
+
+/**
+ * Checks the announced line-ups against each club's key players. Always downloads afresh, since
+ * line-ups appear only shortly before kick-off.
+ */
+export async function checkLineups(
+  fixtureId: string,
+  teams: { home: TeamInsight; away: TeamInsight },
+  signal?: AbortSignal,
+): Promise<LineupCheck> {
+  const summary = await getJson(`summary?event=${fixtureId}`, signal);
+  const starters = new Map<string, Set<string>>();
+  for (const roster of list(summary.rosters)) {
+    const teamId = isRecord(roster.team) ? String(roster.team.id) : '';
+    const names = list(roster.roster)
+      .filter((player) => player.starter === true)
+      .map((player) => (isRecord(player.athlete) ? String(player.athlete.displayName) : ''));
+    if (names.length >= 11) starters.set(teamId, new Set(names));
+  }
+  const announced = starters.has(teams.home.id) && starters.has(teams.away.id);
+  if (!announced) return { announced, missing: [] };
+  const missing = [teams.home, teams.away].flatMap((team) =>
+    team.keyPlayers
+      .filter((player) => !starters.get(team.id)?.has(player.name))
+      .map((player) => ({ team: team.name, name: player.name, note: player.note })),
+  );
+  return { announced, missing };
+}

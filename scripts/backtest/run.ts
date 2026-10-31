@@ -1,5 +1,5 @@
-// Replays past days with the app's own model and slip rules and grades every slip.
-// Usage: npx tsx --tsconfig scripts/backtest/tsconfig.json scripts/backtest/run.ts [days=30]
+// Replays past days with the app's own model, compares slip formats and fits a calibration.
+// Usage: npx tsx --tsconfig scripts/backtest/tsconfig.json scripts/backtest/run.ts [days=90]
 //
 // Each day is rebuilt as it looked before kick-off: the bookmaker's pre-match prices (kept in each
 // match's summary) and only results from earlier days. The news, five-game and head-to-head
@@ -12,13 +12,13 @@ import { getRecentResults } from '@/features/history';
 import { DEFAULT_LEARNED } from '@/features/learning';
 import { outcomeOf } from '@/features/markets';
 import { parseMarketOdds, type MarketOdds } from '@/features/odds';
-import { chooseDay, combinedStats, type Candidate } from '@/features/picks';
+import { chooseDay, combinedStats, DEFAULT_FORMAT, type Candidate, type SlipFormat } from '@/features/picks';
 import { screenCandidates } from '@/features/pipeline';
 import { fitRatings } from '@/features/ratings';
 import { buildTeamHistory } from '@/features/risk';
 import { loadJson, saveJson } from '@/lib/storage';
 
-const DAYS = Number(process.argv[2] ?? 30);
+const DAYS = Number(process.argv[2] ?? 90);
 const ROOT = 'https://site.api.espn.com/apis/site/v2/sports/soccer';
 
 function isoDay(offset: number) {
@@ -63,8 +63,17 @@ function grade(pick: Candidate, fixture: FootballMatch): Graded {
   return { pick, won: outcomeOf(pick.key, fixture.homeGoals ?? 0, fixture.awayGoals ?? 0) };
 }
 
-const slips: { date: string; legs: Graded[]; odds: number; chance: number }[] = [];
-const allBets: Graded[] = [];
+const FORMATS: { name: string; format: SlipFormat; realPricesOnly?: boolean }[] = [
+  { name: '1 game @ 1.50', format: { sizes: [1], target: 1.5, ceiling: 1.8 } },
+  { name: '1 game @ 1.50, real prices', format: { sizes: [1], target: 1.5, ceiling: 1.8 }, realPricesOnly: true },
+  { name: '2 games @ 1.50', format: { sizes: [2], target: 1.5, ceiling: 1.8 } },
+  { name: '2 games @ 1.50, real prices', format: { sizes: [2], target: 1.5, ceiling: 1.8 }, realPricesOnly: true },
+  { name: '2-3 games @ 2.00', format: { sizes: [2, 3], target: 2, ceiling: 2.4 } },
+  { name: '3-4 games @ 2.00 (app)', format: DEFAULT_FORMAT },
+];
+
+type Day = { date: string; pool: Graded[] };
+const days: Day[] = [];
 
 for (let offset = DAYS; offset >= 1; offset--) {
   const date = isoDay(offset);
@@ -85,33 +94,76 @@ for (let offset = DAYS; offset >= 1; offset--) {
       return analysis ? [[f.id, analysis] as const] : [];
     }),
   );
-  const pool = screenCandidates({ date, fixtures: before }, analyses, buildTeamHistory(results));
   const byId = new Map(finished.map((f) => [f.id, f]));
-  allBets.push(...pool.map((pick) => grade(pick, byId.get(pick.fixtureId)!)));
-  const picks = chooseDay(pool);
-  const legs = picks.map((pick) => grade(pick as Candidate, byId.get(pick.fixtureId)!));
-  const stats = combinedStats(picks);
-  if (legs.length) slips.push({ date, legs, odds: stats.odds, chance: stats.chance });
-  const outcome = !legs.length ? 'no slip' : legs.every((leg) => leg.won !== false) ? 'WON ' : 'lost';
-  console.log(
-    `${date}  ${String(finished.length).padStart(3)} matches, ${String(pool.length).padStart(4)} bets  ${outcome}` +
-      (legs.length ? `  ${stats.odds.toFixed(2)} @ ${(stats.chance * 100).toFixed(0)}%  ` + legs.map((l) => `${l.won === false ? '✗' : '✓'} ${l.pick.label}`).join(' | ') : ''),
-  );
+  const pool = screenCandidates({ date, fixtures: before }, analyses, buildTeamHistory(results));
+  days.push({ date, pool: pool.map((pick) => grade(pick, byId.get(pick.fixtureId)!)) });
+  process.stdout.write(`${date}: ${finished.length} matches, ${pool.length} bets\n`);
 }
 
 const pct = (value: number) => `${(value * 100).toFixed(1)}%`;
-const won = slips.filter((slip) => slip.legs.every((leg) => leg.won !== false));
-// A void leg (handicap push) pays back its stake, so it counts as odds 1.
-const returns = won.reduce((sum, slip) => sum + slip.legs.reduce((p, leg) => p * (leg.won === null ? 1 : leg.pick.odds), 1), 0);
-console.log(`\nSlips: ${won.length} of ${slips.length} won (${pct(won.length / slips.length)}); model expected ${pct(slips.reduce((s, x) => s + x.chance, 0) / slips.length)}.`);
-console.log(`Flat 1-unit stakes: returned ${returns.toFixed(2)} for ${slips.length} staked (${pct(returns / slips.length - 1)} profit) at the odds shown.`);
-const legs = slips.flatMap((slip) => slip.legs);
-console.log(`Legs: ${legs.filter((l) => l.won !== false).length} of ${legs.length} won; model expected ${pct(legs.reduce((s, l) => s + l.pick.conservative, 0) / legs.length)}.`);
+/** A void leg (handicap push, draw no bet on a draw) pays back its stake, so it counts as odds 1. */
+const payout = (legs: Graded[]) => (legs.some((leg) => leg.won === false) ? 0 : legs.reduce((p, leg) => p * (leg.won === null ? 1 : leg.pick.odds), 1));
 
-console.log('\nCalibration of every screened bet (model chance -> how often it actually won):');
+console.log('\nFormat                         slips   won    expected  return per 1 staked');
+for (const { name, format, realPricesOnly } of FORMATS) {
+  let slips = 0;
+  let won = 0;
+  let expected = 0;
+  let returned = 0;
+  for (const day of days) {
+    const pool = day.pool.filter((g) => !realPricesOnly || !g.pick.priceIsEstimate);
+    const picks = chooseDay(pool.map((g) => g.pick), format);
+    if (!picks.length) continue;
+    const legs = picks.map((pick) => pool.find((g) => g.pick.fixtureId === pick.fixtureId && g.pick.key === pick.key)!);
+    slips += 1;
+    expected += combinedStats(picks).chance;
+    const pay = payout(legs);
+    returned += pay;
+    if (pay > 0) won += 1;
+  }
+  console.log(`${name.padEnd(30)} ${String(slips).padStart(5)}  ${pct(won / slips).padStart(6)}  ${pct(expected / slips).padStart(8)}  ${(returned / slips).toFixed(3)}`);
+}
+
+// Value singles: every bet with a real bookmaker price that the model rates above that price.
+for (const minEdge of [0, 0.03, 0.06]) {
+  const bets = days.flatMap((day) => day.pool).filter((g) => !g.pick.priceIsEstimate && g.pick.conservative * g.pick.odds - 1 >= minEdge);
+  const returned = bets.reduce((sum, g) => sum + payout([g]), 0);
+  console.log(`Value singles, edge >= ${pct(minEdge).padEnd(5)}   ${String(bets.length).padStart(5)}  ${pct(bets.filter((g) => g.won !== false).length / bets.length).padStart(6)}  ${pct(bets.reduce((s, g) => s + g.pick.conservative, 0) / bets.length).padStart(8)}  ${(returned / bets.length).toFixed(3)}`);
+}
+
+// Calibration: fit chance -> real win rate on the earlier days, judge it on the later ones.
+const logit = (p: number) => Math.log(p / (1 - p));
+const sigmoid = (x: number) => 1 / (1 + Math.exp(-x));
+const split = Math.floor(days.length * (2 / 3));
+const graded = (from: Day[]) => from.flatMap((day) => day.pool).filter((g) => g.won !== null);
+const train = graded(days.slice(0, split));
+const test = graded(days.slice(split));
+let a = 0;
+let b = 1;
+for (let step = 0; step < 50; step++) {
+  // Newton steps for logistic regression of the outcome on logit(chance).
+  let ga = 0, gb = 0, haa = 0, hab = 0, hbb = 0;
+  for (const g of train) {
+    const x = logit(g.pick.conservative);
+    const p = sigmoid(a + b * x);
+    const y = g.won ? 1 : 0;
+    const w = p * (1 - p);
+    ga += y - p; gb += (y - p) * x;
+    haa += w; hab += w * x; hbb += w * x * x;
+  }
+  const det = haa * hbb - hab * hab;
+  a += (hbb * ga - hab * gb) / det;
+  b += (haa * gb - hab * ga) / det;
+}
+const logLoss = (map: (p: number) => number) =>
+  test.reduce((sum, g) => sum - Math.log(g.won ? map(g.pick.conservative) : 1 - map(g.pick.conservative)), 0) / test.length;
+console.log(`\nCalibration fitted on ${train.length} bets: real chance = sigmoid(${a.toFixed(3)} + ${b.toFixed(3)} * logit(model chance))`);
+console.log(`Judged on ${test.length} later bets: log loss ${logLoss((p) => p).toFixed(4)} as is, ${logLoss((p) => sigmoid(a + b * logit(p))).toFixed(4)} corrected (lower is better).`);
+console.log('\nModel chance -> how often it actually won (all days), and the corrected chance:');
+const all = graded(days);
 for (let low = 0.6; low < 1; low += 0.05) {
-  const bucket = allBets.filter((b) => b.won !== null && b.pick.conservative >= low && b.pick.conservative < low + 0.05);
+  const bucket = all.filter((g) => g.pick.conservative >= low && g.pick.conservative < low + 0.05);
   if (bucket.length < 20) continue;
-  const hit = bucket.filter((b) => b.won).length / bucket.length;
-  console.log(`  ${pct(low).padStart(6)}-${pct(low + 0.05).padEnd(6)} ${String(bucket.length).padStart(5)} bets  won ${pct(hit)}`);
+  const mid = low + 0.025;
+  console.log(`  ${pct(low).padStart(6)}-${pct(low + 0.05).padEnd(6)} ${String(bucket.length).padStart(5)} bets  won ${pct(bucket.filter((g) => g.won).length / bucket.length)}  corrected ${pct(sigmoid(a + b * logit(mid)))}`);
 }

@@ -3,11 +3,19 @@ import type { FootballMatch } from './football-data';
 import type { LoggedPick } from './learning';
 import { FAMILY_LABEL, familyOf, formatPercent } from './markets';
 
-/** The day's slip must pay at least this much; above the ceiling the extra price only costs chance. */
-export const TARGET_ODDS = 2;
-const MAX_SLIP_ODDS = 2.4;
-/** The slip is three or four very likely games rather than one or two riskier ones. */
-const SLIP_SIZES = [3, 4];
+/** How the day's slip is built: how many games, and the price it must reach. */
+export type SlipFormat = {
+  /** Slip sizes compared; the most likely slip of any of these sizes wins. */
+  sizes: number[];
+  /** The slip must pay at least this; it is lowered in steps only when nothing fits. */
+  target: number;
+  /** Above this the extra price only costs chance. */
+  ceiling: number;
+};
+
+/** Three or four very likely games together paying 2.00, rather than one or two riskier ones. */
+export const DEFAULT_FORMAT: SlipFormat = { sizes: [3, 4], target: 2, ceiling: 2.4 };
+export const TARGET_ODDS = DEFAULT_FORMAT.target;
 /** Each game should be at least this likely on its own; relaxed in steps only if no slip fits. */
 const LEG_CHANCE_STEPS = [0.85, 0.8, 0.75, 0.7, 0];
 /** Bets per match kept for the slip search, so four-game slips stay quick to search. */
@@ -157,11 +165,11 @@ function bestSlip(legs: Candidate[], size: number, floor: number, ceiling: numbe
 }
 
 /**
- * The day's slip: three or four games on different matches, each as likely as possible on its own,
- * that together pay at least the target. Every three- and four-game combination of the strongest
- * verified bets is compared and the one with the highest chance that every game wins is kept.
+ * The day's slip: games on different matches, each as likely as possible on its own, that together
+ * pay at least the target. Every combination of the allowed sizes from the strongest verified bets
+ * is compared and the one with the highest chance that every game wins is kept.
  */
-export function chooseDay(pool: Candidate[]): Pick[] {
+export function chooseDay(pool: Candidate[], format: SlipFormat = DEFAULT_FORMAT): Pick[] {
   const sorted = [...pool].sort((a, b) => b.conservative - a.conservative || a.odds - b.odds);
   const perMatch = new Map<string, number>();
   const legs = sorted.filter((leg) => {
@@ -172,11 +180,12 @@ export function chooseDay(pool: Candidate[]): Pick[] {
   if (!legs.length) return [];
   const toPicks = (items: Candidate[]) => items.map(({ score: _score, ...pick }): Pick => ({ ...pick, role: 'main' }));
   // Strongest games first: the per-game bar is only lowered when no slip clears it at the target
-  // price, and the price only after that, so the day is never left empty.
-  for (const floor of [TARGET_ODDS, 1.8, 1.6, 1.5]) {
+  // price, and the price only after that (to no less than 1.50), so the day is never left empty.
+  const floors = [...new Set([format.target, format.target * 0.9, format.target * 0.8, 1.5].filter((floor, i) => i === 0 || floor >= 1.5))];
+  for (const floor of floors) {
     for (const minChance of LEG_CHANCE_STEPS) {
       const strong = legs.filter((leg) => leg.conservative >= minChance);
-      const slips = SLIP_SIZES.map((size) => bestSlip(strong, size, floor, MAX_SLIP_ODDS));
+      const slips = format.sizes.map((size) => bestSlip(strong, size, floor, format.ceiling));
       const slip = slips.reduce<Slip | undefined>((best, item) => (item && (!best || item.chance > best.chance) ? item : best), undefined);
       if (slip) return toPicks(slip.items);
     }

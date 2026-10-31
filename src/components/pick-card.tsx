@@ -1,10 +1,14 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AnalysisPanel } from '@/components/analysis-panel';
 import { PALETTE } from '@/constants/palette';
+import { checkLineups, type LineupCheck } from '@/features/insight';
 import { formatPercent } from '@/features/markets';
 import type { Pick } from '@/features/picks';
+
+/** Line-ups are checked from this long before kick-off until shortly after it. */
+const LINEUP_WINDOW_MS = 3 * 3_600_000;
 
 const TIER_COLOR: Record<string, string> = {
   STRONG: PALETTE.positive,
@@ -17,6 +21,17 @@ export function PickCard({ pick, index }: { pick: Pick; index: number }) {
   const [startedAtRender] = useState(() => Date.parse(pick.utcDate) <= Date.now());
   const tier = TIER_COLOR[pick.tier] ?? PALETTE.muted;
   const kickoff = new Date(pick.utcDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const [lineups, setLineups] = useState<LineupCheck>();
+  const insight = pick.insight;
+  useEffect(() => {
+    const untilKickoff = Date.parse(pick.utcDate) - Date.now();
+    if (!insight || untilKickoff > LINEUP_WINDOW_MS || untilKickoff < -15 * 60_000) return;
+    const controller = new AbortController();
+    checkLineups(pick.fixtureId, insight, controller.signal)
+      .then((check) => { if (!controller.signal.aborted) setLineups(check); })
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, [insight, pick.fixtureId, pick.utcDate]);
 
   return (
     <View style={styles.card}>
@@ -34,6 +49,25 @@ export function PickCard({ pick, index }: { pick: Pick; index: number }) {
       <Text style={styles.selection}>{pick.label}</Text>
       <Text style={styles.match}>{pick.home} vs {pick.away}</Text>
       <Text style={styles.meta}>{kickoff}{startedAtRender ? ' · already started' : ''}</Text>
+
+      {lineups && (
+        <View style={[styles.lineups, lineups.missing.length > 0 && styles.lineupsWarning]}>
+          <Text style={styles.lineupsTitle}>
+            {!lineups.announced
+              ? 'Line-ups not out yet'
+              : lineups.missing.length
+                ? 'Key player not starting'
+                : 'Line-ups out: key players start'}
+          </Text>
+          <Text style={styles.lineupsText}>
+            {!lineups.announced
+              ? 'Refresh about an hour before kick-off to check the starting elevens.'
+              : lineups.missing.length
+                ? `${lineups.missing.map((p) => `${p.name} (${p.team}, ${p.note})`).join(', ')} not in the starting eleven. Think twice before staking on this game.`
+                : 'Both clubs’ top scorers and assisters are in the starting eleven.'}
+          </Text>
+        </View>
+      )}
 
       <View style={styles.predicted}>
         <Text style={styles.predictedLabel}>Predicted score</Text>
@@ -100,6 +134,10 @@ const styles = StyleSheet.create({
   selection: { color: PALETTE.ink, fontSize: 22, fontWeight: '700', letterSpacing: -0.4, marginTop: 14 },
   match: { color: PALETTE.ink, fontSize: 15, marginTop: 4 },
   meta: { color: PALETTE.muted, fontSize: 13, marginTop: 2 },
+  lineups: { backgroundColor: PALETTE.surface, borderRadius: 12, marginTop: 12, padding: 12 },
+  lineupsWarning: { backgroundColor: PALETTE.cautionSoft },
+  lineupsTitle: { color: PALETTE.ink, fontSize: 13, fontWeight: '700' },
+  lineupsText: { color: PALETTE.muted, fontSize: 13, lineHeight: 18, marginTop: 3 },
   predicted: { alignItems: 'center', backgroundColor: PALETTE.surface, borderRadius: 12, flexDirection: 'row', justifyContent: 'space-between', marginTop: 16, paddingHorizontal: 14, paddingVertical: 10 },
   predictedLabel: { color: PALETTE.muted, fontSize: 13 },
   predictedValue: { color: PALETTE.ink, fontSize: 17, fontWeight: '700' },
