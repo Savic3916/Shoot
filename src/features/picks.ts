@@ -16,6 +16,29 @@ export type SlipFormat = {
 /** Three or four very likely games together paying 2.00, rather than one or two riskier ones. */
 export const DEFAULT_FORMAT: SlipFormat = { sizes: [3, 4], target: 2, ceiling: 2.4 };
 export const TARGET_ODDS = DEFAULT_FORMAT.target;
+
+export type SlipKind = 'safe' | 'big';
+
+/**
+ * The two slips offered each day. In a 90-day backtest (Aug-Oct 2026) two games at 1.50 with real
+ * bookmaker prices returned about what was staked, while three or four games at 2.00 lost about
+ * 28% of stakes: every extra game adds another bookmaker margin.
+ */
+export const SLIP_FORMATS: Record<SlipKind, SlipFormat & { realPricesOnly: boolean }> = {
+  safe: { sizes: [2], target: 1.5, ceiling: 1.8, realPricesOnly: true },
+  big: { ...DEFAULT_FORMAT, realPricesOnly: false },
+};
+
+/**
+ * The model's chances run low: in the backtest, bets it rated 60-65% won about 70% of the time.
+ * This correction was fitted on the first 60 days and improved forecasts of the last 30.
+ */
+const CALIBRATION = { intercept: 0.302, slope: 1.044 };
+
+export function calibrate(chance: number) {
+  const p = Math.min(0.995, Math.max(0.005, chance));
+  return 1 / (1 + Math.exp(-(CALIBRATION.intercept + CALIBRATION.slope * Math.log(p / (1 - p)))));
+}
 /** Each game should be at least this likely on its own; relaxed in steps only if no slip fits. */
 const LEG_CHANCE_STEPS = [0.85, 0.8, 0.75, 0.7, 0];
 /** Bets per match kept for the slip search, so four-game slips stay quick to search. */
@@ -191,6 +214,15 @@ export function chooseDay(pool: Candidate[], format: SlipFormat = DEFAULT_FORMAT
     }
   }
   return toPicks(legs.slice(0, 1));
+}
+
+/** Both of the day's slips, each tagged with its kind. */
+export function chooseSlips(pool: Candidate[]): Pick[] {
+  return (Object.keys(SLIP_FORMATS) as SlipKind[]).flatMap((kind) => {
+    const format = SLIP_FORMATS[kind];
+    const priced = format.realPricesOnly ? pool.filter((leg) => !leg.priceIsEstimate) : pool;
+    return chooseDay(priced.length ? priced : pool, format).map((pick): Pick => ({ ...pick, slip: kind }));
+  });
 }
 
 export function combinedStats(picks: Pick[]) {

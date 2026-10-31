@@ -19,7 +19,9 @@ import {
 } from './learning';
 import {
   CONFIDENCE_FLOOR,
+  calibrate,
   chooseDay,
+  chooseSlips,
   combinedStats,
   rankCandidates,
   scoreOf,
@@ -33,8 +35,8 @@ import { meetingSupport } from './h2h';
 import { assessMatch, buildTeamHistory, historySupport, type TeamHistory } from './risk';
 import { loadJson, saveJson } from '@/lib/storage';
 
-// v4: slips became 3-4 games paying 2.00, so days fixed under the old two-game rule are redone.
-const LOCKED_KEY = 'learn:locked-days:v4';
+// v5: each day now has a safer and a bigger slip, so days fixed with one slip are redone.
+const LOCKED_KEY = 'learn:locked-days:v5';
 const COVERAGE_PREFIX = 'learn:coverage:';
 /** Results needed (both teams together) before the history check may veto or move a bet. */
 const MIN_FORM_GAMES = 10;
@@ -80,6 +82,12 @@ export type Coverage = {
   /** Bets that passed every check and went into the slip search. */
   bets: number;
 };
+
+/** Applies the backtest's correction to a bet's final chance. */
+function calibrated(candidate: Candidate): Candidate {
+  const conservative = calibrate(candidate.conservative);
+  return { ...candidate, conservative, tier: tierFor(conservative), score: scoreOf(conservative, candidate.edge) };
+}
 
 function hasStarted(fixture: FootballMatch) {
   return fixture.status !== 'NOT STARTED' || Date.parse(fixture.utcDate) <= Date.now();
@@ -249,7 +257,7 @@ async function selectVerifiedPicks(
     checked: matchIds.length,
     bets: verified.length,
   };
-  const picks = chooseDay(verified);
+  const picks = chooseSlips(verified.map(calibrated));
   if (picks.length) return { picks, coverage };
   // Last resort so no day is empty: every match is considered again without the form, news and
   // risk filters, and the strongest picks are marked down for being unverified.
@@ -268,7 +276,7 @@ async function selectVerifiedPicks(
     const conservative = candidate.conservative - 0.04;
     return { ...candidate, conservative, tier: tierFor(conservative), score: scoreOf(conservative, candidate.edge) };
   });
-  return { picks: chooseDay(fallback), coverage };
+  return { picks: chooseSlips(fallback.map(calibrated)), coverage };
 }
 
 function compose(

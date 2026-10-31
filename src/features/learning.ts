@@ -45,6 +45,8 @@ export type LoggedPick = {
   conservative?: number;
   /** The day's main bet, or an optional add-on shown separately (older picks have none: main). */
   role?: 'main' | 'addon';
+  /** Which of the day's two slips this pick belongs to (older picks have none: the bigger one). */
+  slip?: 'safe' | 'big';
   outcome?: 'won' | 'lost' | 'void';
 };
 

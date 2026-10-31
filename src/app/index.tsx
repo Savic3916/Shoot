@@ -9,7 +9,7 @@ import { PALETTE } from '@/constants/palette';
 import { getMatchdayData, type MatchdayData } from '@/features/football-data';
 import { formatPercent } from '@/features/markets';
 import { buildBrief, type Brief } from '@/features/pipeline';
-import { combinedStats, TARGET_ODDS } from '@/features/picks';
+import { combinedStats, SLIP_FORMATS, type SlipKind } from '@/features/picks';
 
 function getDayString(offset: number) {
   const day = new Date();
@@ -17,10 +17,17 @@ function getDayString(offset: number) {
   return `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
 }
 
+/** What each slip did in the 90-day backtest (1 Aug - 30 Oct 2026); see scripts/backtest. */
+const BACKTEST: Record<SlipKind, { won: string; returned: string }> = {
+  safe: { won: '66%', returned: '₦99.70' },
+  big: { won: '39%', returned: '₦72' },
+};
+
 type Loaded = { key: string; data?: MatchdayData; error?: string };
 
 export default function FootballScreen() {
   const [dayOffset, setDayOffset] = useState<0 | 1>(0);
+  const [slip, setSlip] = useState<SlipKind>('safe');
   const [refreshKey, setRefreshKey] = useState(0);
   const [loaded, setLoaded] = useState<Loaded>();
   const [briefState, setBriefState] = useState<{ key: string; brief: Brief }>();
@@ -73,7 +80,8 @@ export default function FootballScreen() {
 
   const brief = briefState?.key === requestKey ? briefState.brief : undefined;
   const picks = brief?.picks ?? [];
-  const mainPicks = picks;
+  // Picks saved before there were two slips belong to the bigger one.
+  const mainPicks = picks.filter((pick) => (pick.slip ?? 'big') === slip);
   const stats = mainPicks.length > 0 ? combinedStats(mainPicks) : undefined;
   const track = brief?.track;
 
@@ -94,10 +102,10 @@ export default function FootballScreen() {
 
         <Text style={styles.title}>{dayOffset === 0 ? 'Today’s bet' : 'Tomorrow’s bet'}</Text>
         <Text style={styles.subtitle}>
-          Every game of the day and every market is analysed, each bet is checked against form, team news
-          and every past meeting of the two clubs, then every combination of three and four games is
-          compared to find the slip paying {TARGET_ODDS.toFixed(2)} or more with the best chance that all
-          of it wins. Once set, the slip is fixed for the day and never changes on refresh.
+          Every game of the day and every market is analysed, and each bet is checked against form, team
+          news and every past meeting of the two clubs. Then every combination is compared to find the
+          slip most likely to win in full. Once set, the slips are fixed for the day and never change on
+          refresh.
         </Text>
 
         <View style={styles.tabs}>
@@ -115,6 +123,27 @@ export default function FootballScreen() {
           ))}
         </View>
         <Text style={styles.date}>{displayDate}</Text>
+
+        <View style={styles.tabs}>
+          {(['safe', 'big'] as const).map((kind) => (
+            <Pressable
+              key={kind}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: slip === kind }}
+              onPress={() => setSlip(kind)}
+              style={[styles.tab, slip === kind && styles.tabSelected]}>
+              <Text style={[styles.tabText, slip === kind && styles.tabTextSelected]}>
+                {kind === 'safe' ? 'Safer' : 'Bigger'} · {SLIP_FORMATS[kind].target.toFixed(2)}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+        <Text style={styles.date}>
+          {slip === 'safe'
+            ? `${SLIP_FORMATS.safe.sizes[0]} games at real bookmaker prices.`
+            : `${SLIP_FORMATS.big.sizes.join(' or ')} games; some prices are our estimates.`}{' '}
+          Last 90 days: won {BACKTEST[slip].won} of slips, paid back {BACKTEST[slip].returned} for every ₦100 staked.
+        </Text>
 
         {current?.error ? (
           <View style={styles.notice}>
@@ -148,7 +177,7 @@ export default function FootballScreen() {
               <PickCard key={pick.fixtureId} pick={pick} index={index} />
             ))}
 
-            {!picks.length && (
+            {!mainPicks.length && (
               <View style={styles.notice}>
                 <Text style={styles.noticeTitle}>No bet cleared the bar</Text>
                 <Text style={styles.noticeText}>
@@ -170,12 +199,18 @@ export default function FootballScreen() {
               </View>
             )}
 
+            {stats && (
+              <Text style={styles.record}>
+                How much to stake: the same small amount every day, about 5% of the money you keep for
+                betting. Don’t roll winnings over: one loss would wipe out every win before it.
+              </Text>
+            )}
+
             {brief.coverage && (
               <Text style={styles.record}>
                 Searched all {brief.coverage.matches} matches of the day: {brief.coverage.analysed} could be priced,{' '}
                 {brief.coverage.checked} had a bet strong enough to check against news and form, and{' '}
-                {brief.coverage.bets} bets passed every check and were compared in every three- and four-game
-                slip.
+                {brief.coverage.bets} bets passed every check and were compared in every possible slip.
               </Text>
             )}
 
