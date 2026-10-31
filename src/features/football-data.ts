@@ -4,6 +4,9 @@ import { parseMarketOdds, type MarketOdds } from './odds';
 /** Cards shown in a finished match; absent when the feed carries no match events for it. */
 export type MatchCards = { homeRed: number; awayRed: number; homeYellow: number; awayYellow: number };
 
+/** Shots in a finished match; absent when the feed carries no team statistics for it. */
+export type MatchShots = { home: number; away: number; homeOnTarget: number; awayOnTarget: number };
+
 export type FootballMatch = {
   id: string;
   utcDate: string;
@@ -21,6 +24,7 @@ export type FootballMatch = {
   market?: MarketOdds;
   leagueId: string;
   cards?: MatchCards;
+  shots?: MatchShots;
 };
 
 export type MatchdayData = {
@@ -68,6 +72,24 @@ function parseCards(competition: Record<string, unknown> | undefined, homeId: st
     else if (detail.yellowCard === true) cards[home ? 'homeYellow' : 'awayYellow'] += 1;
   }
   return cards;
+}
+
+function parseShots(home: Record<string, unknown> | undefined, away: Record<string, unknown> | undefined): MatchShots | undefined {
+  const stat = (team: Record<string, unknown> | undefined, name: string) => {
+    const entry = records(team?.statistics).find((item) => item.name === name);
+    const value = Number(entry?.displayValue);
+    return Number.isFinite(value) ? value : undefined;
+  };
+  const shots = {
+    home: stat(home, 'totalShots'),
+    away: stat(away, 'totalShots'),
+    homeOnTarget: stat(home, 'shotsOnTarget'),
+    awayOnTarget: stat(away, 'shotsOnTarget'),
+  };
+  const { home: h, away: a, homeOnTarget: ho, awayOnTarget: ao } = shots;
+  // A match the feed reports with no shots at all has no real statistics.
+  if (h === undefined || a === undefined || ho === undefined || ao === undefined || h + a === 0) return undefined;
+  return { home: h, away: a, homeOnTarget: ho, awayOnTarget: ao };
 }
 
 export function normalizeEvent(event: Record<string, unknown>) {
@@ -125,6 +147,7 @@ export function normalizeEvent(event: Record<string, unknown>) {
       country: league.country,
       leagueId,
       cards: parseCards(competition, homeId, awayId),
+      shots: parseShots(homeEntry, awayEntry),
       homeTeam: homeName,
       awayTeam: awayName,
       homeTeamId: homeId,

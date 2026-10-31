@@ -1,4 +1,4 @@
-import { fetchDayEvents, normalizeEvent, type MatchCards } from './football-data';
+import { fetchDayEvents, normalizeEvent, type MatchCards, type MatchShots } from './football-data';
 import { loadJson, saveJson } from '@/lib/storage';
 
 export type PastResult = {
@@ -11,10 +11,12 @@ export type PastResult = {
   homeGoals: number;
   awayGoals: number;
   cards?: MatchCards;
+  shots?: MatchShots;
 };
 
 const HISTORY_DAYS = 45;
-const CACHE_PREFIX = 'results:v2:';
+// v3 adds shots.
+const CACHE_PREFIX = 'results:v3:';
 
 function compact(date: Date) {
   return date.toISOString().slice(0, 10).replaceAll('-', '');
@@ -50,6 +52,7 @@ async function resultsForDay(yyyymmdd: string, cacheable: boolean, signal?: Abor
       homeGoals: fixture.homeGoals,
       awayGoals: fixture.awayGoals,
       cards: fixture.cards,
+      shots: fixture.shots,
     });
   }
   // Days older than yesterday cannot change any more, so they are cached for good.

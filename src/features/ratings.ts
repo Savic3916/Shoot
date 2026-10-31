@@ -12,14 +12,48 @@ const HALF_LIFE_DAYS = 21;
 const SHRINKAGE = 3;
 const MIN_WEIGHT = 2.5;
 const ITERATIONS = 30;
+/**
+ * Share of each match's goals replaced by the goals its shots were worth. Shots are a steadier
+ * measure of how well a side played than the handful of goals that happened to go in.
+ */
+export const SHOT_WEIGHT = 0.5;
+/** An off-target shot is worth this fraction of a shot on target. */
+const OFF_TARGET_VALUE = 0.12;
+
+/**
+ * Each match's score with part of the goals replaced by what its shots were worth. The goals one
+ * shot on target is worth is measured across every match with shot data, so it needs no tuning.
+ */
+function shotAdjusted(results: PastResult[], shotWeight: number): PastResult[] {
+  const withShots = results.filter((result) => result.shots);
+  const shotValue = (result: PastResult, side: 'home' | 'away') => {
+    const shots = result.shots!;
+    const onTarget = side === 'home' ? shots.homeOnTarget : shots.awayOnTarget;
+    const total = side === 'home' ? shots.home : shots.away;
+    return onTarget + OFF_TARGET_VALUE * Math.max(0, total - onTarget);
+  };
+  const goals = withShots.reduce((sum, result) => sum + result.homeGoals + result.awayGoals, 0);
+  const value = withShots.reduce((sum, result) => sum + shotValue(result, 'home') + shotValue(result, 'away'), 0);
+  if (shotWeight <= 0 || withShots.length < 50 || value <= 0) return results;
+  const goalsPerShot = goals / value;
+  return results.map((result) =>
+    result.shots
+      ? {
+          ...result,
+          homeGoals: (1 - shotWeight) * result.homeGoals + shotWeight * goalsPerShot * shotValue(result, 'home'),
+          awayGoals: (1 - shotWeight) * result.awayGoals + shotWeight * goalsPerShot * shotValue(result, 'away'),
+        }
+      : result,
+  );
+}
 
 /**
  * Time-weighted attack/defence ratings fitted from recent results. A team's attack is its goals
  * scored relative to what an average side would score against the same opposition (and the same
  * for defence), shrunk toward 1.0 so teams with few matches are not over-trusted.
  */
-export function fitRatings(results: PastResult[], now = Date.now()): Ratings {
-  const weighted = results.map((result) => ({
+export function fitRatings(results: PastResult[], now = Date.now(), shotWeight = SHOT_WEIGHT): Ratings {
+  const weighted = shotAdjusted(results, shotWeight).map((result) => ({
     result,
     weight: 0.5 ** ((now - Date.parse(result.utcDate)) / 86_400_000 / HALF_LIFE_DAYS),
   }));

@@ -74,6 +74,9 @@ const FORMATS: { name: string; format: SlipFormat; realPricesOnly?: boolean }[] 
 
 type Day = { date: string; pool: Graded[] };
 const days: Day[] = [];
+/** Ratings-only result forecasts for each share of goals replaced by shot quality. */
+const SHOT_WEIGHTS = [0, 0.5, 0.75];
+const ratingLoss = SHOT_WEIGHTS.map(() => ({ loss: 0, n: 0 }));
 
 for (let offset = DAYS; offset >= 1; offset--) {
   const date = isoDay(offset);
@@ -95,6 +98,18 @@ for (let offset = DAYS; offset >= 1; offset--) {
     }),
   );
   const byId = new Map(finished.map((f) => [f.id, f]));
+  SHOT_WEIGHTS.forEach((weight, i) => {
+    const variant = fitRatings(results, Date.parse(`${date}T00:00:00Z`), weight);
+    for (const f of before) {
+      const probs = analyseFixture(f, variant, DEFAULT_LEARNED)?.statProbs;
+      const actual = byId.get(f.id)!;
+      if (!probs) continue;
+      const diff = (actual.homeGoals ?? 0) - (actual.awayGoals ?? 0);
+      const p = diff > 0 ? probs.home : diff < 0 ? probs.away : probs.draw;
+      ratingLoss[i].loss -= Math.log(Math.max(1e-6, p));
+      ratingLoss[i].n += 1;
+    }
+  });
   const pool = screenCandidates({ date, fixtures: before }, analyses, buildTeamHistory(results));
   days.push({ date, pool: pool.map((pick) => grade(pick, byId.get(pick.fixtureId)!)) });
   process.stdout.write(`${date}: ${finished.length} matches, ${pool.length} bets\n`);
@@ -123,6 +138,9 @@ for (const { name, format, realPricesOnly } of FORMATS) {
   }
   console.log(`${name.padEnd(30)} ${String(slips).padStart(5)}  ${pct(won / slips).padStart(6)}  ${pct(expected / slips).padStart(8)}  ${(returned / slips).toFixed(3)}`);
 }
+
+console.log('\nRatings alone, match result log loss (lower is better):');
+SHOT_WEIGHTS.forEach((weight, i) => console.log(`  shots weight ${weight.toFixed(2)}: ${(ratingLoss[i].loss / ratingLoss[i].n).toFixed(4)} over ${ratingLoss[i].n} matches`));
 
 // Value singles: every bet with a real bookmaker price that the model rates above that price.
 for (const minEdge of [0, 0.03, 0.06]) {
@@ -166,4 +184,15 @@ for (let low = 0.6; low < 1; low += 0.05) {
   if (bucket.length < 20) continue;
   const mid = low + 0.025;
   console.log(`  ${pct(low).padStart(6)}-${pct(low + 0.05).padEnd(6)} ${String(bucket.length).padStart(5)} bets  won ${pct(bucket.filter((g) => g.won).length / bucket.length)}  corrected ${pct(sigmoid(a + b * logit(mid)))}`);
+}
+
+// The real test of an edge: on the later days only, bet every real bookmaker price that the
+// corrected chance (fitted on the earlier days) rates above the price.
+const corrected = (p: number) => sigmoid(a + b * logit(p));
+for (const minEdge of [0, 0.03, 0.06]) {
+  const bets = days.slice(split).flatMap((day) => day.pool)
+    .filter((g) => !g.pick.priceIsEstimate && corrected(g.pick.conservative) * g.pick.odds - 1 >= minEdge);
+  if (!bets.length) continue;
+  const returned = bets.reduce((sum, g) => sum + payout([g]), 0);
+  console.log(`Later days, corrected value singles, edge >= ${pct(minEdge)}: ${bets.length} bets, won ${pct(bets.filter((g) => g.won !== false).length / bets.length)}, return ${(returned / bets.length).toFixed(3)} per 1 staked`);
 }
