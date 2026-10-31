@@ -17,17 +17,27 @@ function getDayString(offset: number) {
   return `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
 }
 
-/** What each slip did in the 90-day backtest (1 Aug - 30 Oct 2026); see scripts/backtest. */
-const BACKTEST: Record<SlipKind, { won: string; returned: string }> = {
-  safe: { won: '66%', returned: '₦99.70' },
-  big: { won: '39%', returned: '₦72' },
+type Tab = SlipKind | 'value';
+
+const TAB_LABEL: Record<Tab, string> = {
+  safe: `Safer · ${SLIP_FORMATS.safe.target.toFixed(2)}`,
+  big: `Bigger · ${SLIP_FORMATS.big.target.toFixed(2)}`,
+  value: 'Value',
+};
+
+/** What each tab's bets did in the backtest (1 Aug - 30 Oct 2026); see scripts/backtest. */
+const BACKTEST: Record<Tab, string> = {
+  safe: `${SLIP_FORMATS.safe.sizes[0]} games at real bookmaker prices. Last 90 days: won 63% of slips, paid back ₦94 for every ₦100 staked.`,
+  big: `${SLIP_FORMATS.big.sizes.join(' or ')} games; some prices are our estimates. Last 90 days: won 40% of slips, paid back ₦75 for every ₦100 staked.`,
+  value:
+    'Single bets where the bookmaker pays more than the bet is worth; stake each one on its own. On 30 days the model had not been tuned on: 39 bets, won 74%, paid back ₦113 for every ₦100 staked. Promising, not proven.',
 };
 
 type Loaded = { key: string; data?: MatchdayData; error?: string };
 
 export default function FootballScreen() {
   const [dayOffset, setDayOffset] = useState<0 | 1>(0);
-  const [slip, setSlip] = useState<SlipKind>('safe');
+  const [slip, setSlip] = useState<Tab>('safe');
   const [refreshKey, setRefreshKey] = useState(0);
   const [loaded, setLoaded] = useState<Loaded>();
   const [briefState, setBriefState] = useState<{ key: string; brief: Brief }>();
@@ -125,7 +135,7 @@ export default function FootballScreen() {
         <Text style={styles.date}>{displayDate}</Text>
 
         <View style={styles.tabs}>
-          {(['safe', 'big'] as const).map((kind) => (
+          {(['safe', 'big', 'value'] as const).map((kind) => (
             <Pressable
               key={kind}
               accessibilityRole="tab"
@@ -133,17 +143,12 @@ export default function FootballScreen() {
               onPress={() => setSlip(kind)}
               style={[styles.tab, slip === kind && styles.tabSelected]}>
               <Text style={[styles.tabText, slip === kind && styles.tabTextSelected]}>
-                {kind === 'safe' ? 'Safer' : 'Bigger'} · {SLIP_FORMATS[kind].target.toFixed(2)}
+                {TAB_LABEL[kind]}
               </Text>
             </Pressable>
           ))}
         </View>
-        <Text style={styles.date}>
-          {slip === 'safe'
-            ? `${SLIP_FORMATS.safe.sizes[0]} games at real bookmaker prices.`
-            : `${SLIP_FORMATS.big.sizes.join(' or ')} games; some prices are our estimates.`}{' '}
-          Last 90 days: won {BACKTEST[slip].won} of slips, paid back {BACKTEST[slip].returned} for every ₦100 staked.
-        </Text>
+        <Text style={styles.date}>{BACKTEST[slip]}</Text>
 
         {current?.error ? (
           <View style={styles.notice}>
@@ -187,7 +192,7 @@ export default function FootballScreen() {
               </View>
             )}
 
-            {stats && (
+            {stats && slip !== 'value' && (
               <View style={styles.combined}>
                 <View>
                   <Text style={styles.combinedLabel}>{mainPicks.length === 1 ? 'Single bet' : `Whole slip (${mainPicks.length} picks)`}</Text>
@@ -201,8 +206,9 @@ export default function FootballScreen() {
 
             {stats && (
               <Text style={styles.record}>
-                How much to stake: the same small amount every day, about 5% of the money you keep for
-                betting. Don’t roll winnings over: one loss would wipe out every win before it.
+                {slip === 'value'
+                  ? 'How much to stake: about 2% of the money you keep for betting on each bet, and only if your bookie pays at least the “worth it at” price.'
+                  : 'How much to stake: the same small amount every day, about 5% of the money you keep for betting. Don’t roll winnings over: one loss would wipe out every win before it.'}
               </Text>
             )}
 

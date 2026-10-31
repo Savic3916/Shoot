@@ -5,7 +5,7 @@ import { AnalysisPanel } from '@/components/analysis-panel';
 import { PALETTE } from '@/constants/palette';
 import { checkLineups, type LineupCheck } from '@/features/insight';
 import { formatPercent } from '@/features/markets';
-import type { Pick } from '@/features/picks';
+import { worthAt, type Pick } from '@/features/picks';
 
 /** Line-ups are checked from this long before kick-off until shortly after it. */
 const LINEUP_WINDOW_MS = 3 * 3_600_000;
@@ -43,6 +43,7 @@ export function PickCard({ pick, index }: { pick: Pick; index: number }) {
         <View style={styles.priceBox}>
           <Text style={styles.price}>{pick.odds.toFixed(2)}</Text>
           <Text style={styles.priceNote}>{pick.priceIsEstimate ? 'estimated odds' : 'bookmaker odds'}</Text>
+          <Text style={styles.priceNote}>worth it at {worthAt(pick.conservative).toFixed(2)}+</Text>
         </View>
       </View>
 

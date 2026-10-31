@@ -21,8 +21,8 @@ export type SlipKind = 'safe' | 'big';
 
 /**
  * The two slips offered each day. In a 90-day backtest (Aug-Oct 2026) two games at 1.50 with real
- * bookmaker prices returned about what was staked, while three or four games at 2.00 lost about
- * 28% of stakes: every extra game adds another bookmaker margin.
+ * bookmaker prices lost about 6% of stakes and three or four games at 2.00 about 25%: every extra
+ * game adds another bookmaker margin.
  */
 export const SLIP_FORMATS: Record<SlipKind, SlipFormat & { realPricesOnly: boolean }> = {
   safe: { sizes: [2], target: 1.5, ceiling: 1.8, realPricesOnly: true },
@@ -31,13 +31,42 @@ export const SLIP_FORMATS: Record<SlipKind, SlipFormat & { realPricesOnly: boole
 
 /**
  * The model's chances run low: in the backtest, bets it rated 60-65% won about 70% of the time.
- * This correction was fitted on the first 60 days and improved forecasts of the last 30.
+ * This correction was fitted on the first 60 of 90 days and improved forecasts of the last 30.
  */
-const CALIBRATION = { intercept: 0.302, slope: 1.044 };
+const CALIBRATION = { intercept: 0.25, slope: 1.087 };
 
 export function calibrate(chance: number) {
   const p = Math.min(0.995, Math.max(0.005, chance));
   return 1 / (1 + Math.exp(-(CALIBRATION.intercept + CALIBRATION.slope * Math.log(p / (1 - p)))));
+}
+
+/**
+ * A value bet: a real bookmaker price above what the corrected chance says the bet is worth. On the
+ * last 30 days of the backtest, judged with a correction fitted only on the 60 days before, bets
+ * at least 3% above their worth won 74% and paid back 1.13 per 1 staked (39 bets: promising, not
+ * proven).
+ */
+export const VALUE_EDGE = 0.03;
+const MAX_VALUE_BETS = 5;
+
+/** The lowest price at which a bet with this chance is worth taking. */
+export function worthAt(chance: number) {
+  return (1 + VALUE_EDGE) / chance;
+}
+
+/** The day's value bets, best first, one per match, each meant as a separate single. */
+export function chooseValueBets(pool: Candidate[]): Pick[] {
+  const seen = new Set<string>();
+  return pool
+    .filter((leg) => !leg.priceIsEstimate && leg.conservative * leg.odds - 1 >= VALUE_EDGE)
+    .sort((a, b) => b.conservative * b.odds - a.conservative * a.odds)
+    .filter((leg) => {
+      if (seen.has(leg.fixtureId)) return false;
+      seen.add(leg.fixtureId);
+      return true;
+    })
+    .slice(0, MAX_VALUE_BETS)
+    .map(({ score: _score, ...pick }): Pick => ({ ...pick, role: 'main', slip: 'value' }));
 }
 /** Each game should be at least this likely on its own; relaxed in steps only if no slip fits. */
 const LEG_CHANCE_STEPS = [0.85, 0.8, 0.75, 0.7, 0];

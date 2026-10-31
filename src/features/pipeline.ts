@@ -22,6 +22,7 @@ import {
   calibrate,
   chooseDay,
   chooseSlips,
+  chooseValueBets,
   combinedStats,
   rankCandidates,
   scoreOf,
@@ -35,8 +36,8 @@ import { meetingSupport } from './h2h';
 import { assessMatch, buildTeamHistory, historySupport, type TeamHistory } from './risk';
 import { loadJson, saveJson } from '@/lib/storage';
 
-// v5: each day now has a safer and a bigger slip, so days fixed with one slip are redone.
-const LOCKED_KEY = 'learn:locked-days:v5';
+// v6: each day now has a safer slip, a bigger slip and value bets; days fixed earlier are redone.
+const LOCKED_KEY = 'learn:locked-days:v6';
 const COVERAGE_PREFIX = 'learn:coverage:';
 /** Results needed (both teams together) before the history check may veto or move a bet. */
 const MIN_FORM_GAMES = 10;
@@ -83,8 +84,13 @@ export type Coverage = {
   bets: number;
 };
 
-/** Applies the backtest's correction to a bet's final chance. */
+/**
+ * Applies the backtest's correction to a bet's final chance. Only bets with a real bookmaker price
+ * are corrected: in the backtest, slips built from estimated prices already won about as often as
+ * the uncorrected chance said.
+ */
 function calibrated(candidate: Candidate): Candidate {
+  if (candidate.priceIsEstimate) return candidate;
   const conservative = calibrate(candidate.conservative);
   return { ...candidate, conservative, tier: tierFor(conservative), score: scoreOf(conservative, candidate.edge) };
 }
@@ -257,7 +263,8 @@ async function selectVerifiedPicks(
     checked: matchIds.length,
     bets: verified.length,
   };
-  const picks = chooseSlips(verified.map(calibrated));
+  const corrected = verified.map(calibrated);
+  const picks = [...chooseSlips(corrected), ...chooseValueBets(corrected)];
   if (picks.length) return { picks, coverage };
   // Last resort so no day is empty: every match is considered again without the form, news and
   // risk filters, and the strongest picks are marked down for being unverified.
