@@ -1,3 +1,4 @@
+import { Link } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -8,7 +9,7 @@ import { PALETTE } from '@/constants/palette';
 import { getMatchdayData, type MatchdayData } from '@/features/football-data';
 import { formatPercent } from '@/features/markets';
 import { buildBrief, type Brief } from '@/features/pipeline';
-import { combinedStats } from '@/features/picks';
+import { combinedStats, TARGET_ODDS } from '@/features/picks';
 
 function getDayString(offset: number) {
   const day = new Date();
@@ -18,7 +19,7 @@ function getDayString(offset: number) {
 
 type Loaded = { key: string; data?: MatchdayData; error?: string };
 
-export default function PicksScreen() {
+export default function FootballScreen() {
   const [dayOffset, setDayOffset] = useState<0 | 1>(0);
   const [refreshKey, setRefreshKey] = useState(0);
   const [loaded, setLoaded] = useState<Loaded>();
@@ -93,9 +94,10 @@ export default function PicksScreen() {
 
         <Text style={styles.title}>{dayOffset === 0 ? 'Today’s bet' : 'Tomorrow’s bet'}</Text>
         <Text style={styles.subtitle}>
-          Every game of the day is analysed, then every pair of bets is compared to find the two games
-          that together pay 1.50 or more with the best chance that both win. Once set, the pair is fixed
-          for the day and never changes on refresh.
+          Every game of the day and every market is analysed, each bet is checked against form, team news
+          and every past meeting of the two clubs, then every combination of three and four games is
+          compared to find the slip paying {TARGET_ODDS.toFixed(2)} or more with the best chance that all
+          of it wins. Once set, the slip is fixed for the day and never changes on refresh.
         </Text>
 
         <View style={styles.tabs}>
@@ -172,8 +174,8 @@ export default function PicksScreen() {
               <Text style={styles.record}>
                 Searched all {brief.coverage.matches} matches of the day: {brief.coverage.analysed} could be priced,{' '}
                 {brief.coverage.checked} had a bet strong enough to check against news and form, and{' '}
-                {brief.coverage.bets} bets passed every check and were compared in every single, pair and
-                triple.
+                {brief.coverage.bets} bets passed every check and were compared in every three- and four-game
+                slip.
               </Text>
             )}
 
@@ -185,6 +187,8 @@ export default function PicksScreen() {
             )}
           </>
         )}
+
+        <Link href="/basketball" style={styles.link}>Basketball picks →</Link>
 
         <Text style={styles.disclaimer}>
           No bet is guaranteed; even a 75% pick loses one time in four. Estimated odds are
@@ -223,5 +227,6 @@ const styles = StyleSheet.create({
   combinedSub: { color: '#B9D6CF', fontSize: 13, marginTop: 3 },
   combinedOdds: { color: '#FFFFFF', fontSize: 32, fontWeight: '800', letterSpacing: -0.8 },
   record: { color: PALETTE.ink, fontSize: 13, lineHeight: 19, marginTop: 16 },
+  link: { color: PALETTE.primary, fontSize: 14, fontWeight: '600', marginTop: 24 },
   disclaimer: { color: PALETTE.faint, fontSize: 12, lineHeight: 18, marginTop: 24 },
 });

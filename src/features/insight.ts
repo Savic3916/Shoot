@@ -1,5 +1,6 @@
 import type { MatchAnalysis } from './analysis';
 import type { FootballMatch } from './football-data';
+import { allMeetings } from './h2h';
 import { familyOf, formatPercent, outcomeOf } from './markets';
 
 /**
@@ -474,7 +475,8 @@ export async function fetchInsight(
   });
   const home = build(fixture.homeTeamId, fixture.homeTeam, homeNews);
   const away = build(fixture.awayTeamId, fixture.awayTeam, awayNews);
-  const h2h = parseH2H(summary);
+  // Every league meeting since 2003, not just the last few the summary lists.
+  const h2h = await allMeetings(fixture, parseH2H(summary), signal);
   const venue = isRecord(summary.gameInfo) && isRecord(summary.gameInfo.venue)
     ? (summary.gameInfo.venue.fullName as string | undefined)
     : undefined;

@@ -29,15 +29,21 @@ import {
 } from './picks';
 import { fitRatings, type Ratings } from './ratings';
 import { isEligibleCompetition } from './competitions';
+import { meetingSupport } from './h2h';
 import { assessMatch, buildTeamHistory, historySupport, type TeamHistory } from './risk';
 import { loadJson, saveJson } from '@/lib/storage';
 
-const LOCKED_KEY = 'learn:locked-days:v3';
+// v4: slips became 3-4 games paying 2.00, so days fixed under the old two-game rule are redone.
+const LOCKED_KEY = 'learn:locked-days:v4';
 const COVERAGE_PREFIX = 'learn:coverage:';
 /** Results needed (both teams together) before the history check may veto or move a bet. */
 const MIN_FORM_GAMES = 10;
 const MIN_FORM_SUPPORT = 0.55;
 const FORM_WEIGHT = 0.25;
+/** Past meetings needed before head to head may veto or move a bet. */
+const MIN_MEETINGS = 4;
+const MIN_MEETING_SUPPORT = 0.5;
+const MEETING_WEIGHT = 0.2;
 
 export type Brief = {
   analyses: Map<string, MatchAnalysis>;
@@ -181,6 +187,18 @@ async function selectVerifiedPicks(
     );
     const { hits, n } = formSupport(candidate.key, insight);
     let conservative = candidate.conservative;
+    // Every past meeting of the two clubs: a bet that usually lost when they met is dropped, one
+    // that usually won is moved a little toward that record.
+    const meetings = meetingSupport(candidate.key, fixture, insight.h2h);
+    if (meetings && meetings.games >= MIN_MEETINGS) {
+      if (meetings.support < MIN_MEETING_SUPPORT) return undefined;
+      conservative = (1 - MEETING_WEIGHT) * conservative + MEETING_WEIGHT * meetings.support;
+      insight.betReasons.splice(
+        Math.max(0, insight.betReasons.length - 1),
+        0,
+        `Head to head: this exact bet won in ${meetings.hits} of ${meetings.games} meetings${meetings.since ? ` since ${meetings.since}` : ''}.`,
+      );
+    }
     if (formChecked.has(keyOf(candidate))) {
       // Already weighed against the longer downloaded history; the five-game check would count
       // the same games twice.

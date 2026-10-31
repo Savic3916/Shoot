@@ -4,19 +4,19 @@ import type { LoggedPick } from './learning';
 import { FAMILY_LABEL, familyOf, formatPercent } from './markets';
 
 /** The day's slip must pay at least this much; above the ceiling the extra price only costs chance. */
-export const TARGET_ODDS = 1.5;
-const MAX_SLIP_ODDS = 1.8;
-/** The slip is two games, so one surprise result is not the only thing between a win and a loss. */
-const SLIP_LEGS = 2;
-/** Each game should be at least this likely on its own; relaxed in steps only if no pair fits. */
+export const TARGET_ODDS = 2;
+const MAX_SLIP_ODDS = 2.4;
+/** The slip is three or four very likely games rather than one or two riskier ones. */
+const SLIP_SIZES = [3, 4];
+/** Each game should be at least this likely on its own; relaxed in steps only if no slip fits. */
 const LEG_CHANCE_STEPS = [0.85, 0.8, 0.75, 0.7, 0];
+/** Bets per match kept for the slip search, so four-game slips stay quick to search. */
+const POOL_PER_MATCH = 3;
 /** Lowest chance a bet may have to be offered (the strongest bet inside the band always wins). */
 export const CONFIDENCE_FLOOR = 0.6;
 const SHORTLIST_SIZE = Infinity;
 const MIN_PRICE = 1.05;
 const ESTIMATED_MARGIN = 0.05;
-const SKIPPED = new Set(['draw', 'dc12']);
-const AVAILABLE_ON_BOOKIE = /^(home|away|dc1x|dcx2|btts|nobtts|[ou](15|25|35|45))$/;
 
 export type Pick = LoggedPick & {
   /** Probability after penalising model disagreement and thin evidence. */
@@ -58,11 +58,9 @@ export function rankCandidates(
     const analysis = analyses.get(fixture.id);
     if (!analysis || analysis.quality < minQuality || !isEligible(fixture)) continue;
 
+    // Every market the model prices is a candidate (result, double chance, draw no bet, goals,
+    // team goals, both to score, handicaps); the chance after every check decides, not the type.
     for (const line of analysis.lines) {
-      // Only bets SportyBet lists on virtually every match: 1X2, double chance, GG/NG and
-      // over/under 1.5-4.5. Handicaps, odd total lines, team-to-score and draw-no-bet are left out
-      // (they were also unreliable in testing, and are often missing from the bookie).
-      if (SKIPPED.has(line.key) || !AVAILABLE_ON_BOOKIE.test(line.key)) continue;
 
       const m = analysis.marketProbs?.[line.key];
       const s = analysis.statProbs?.[line.key];
@@ -132,16 +130,24 @@ type Slip = { items: Candidate[]; odds: number; chance: number };
  * exactly.
  */
 function bestSlip(legs: Candidate[], size: number, floor: number, ceiling: number): Slip | undefined {
+  // Highest price among the legs from each position on, to stop branches that can no longer reach
+  // the floor.
+  const maxOddsFrom = legs.map((leg) => leg.odds);
+  for (let i = legs.length - 2; i >= 0; i--) maxOddsFrom[i] = Math.max(maxOddsFrom[i], maxOddsFrom[i + 1]);
   let best: Slip | undefined;
   const visit = (items: Candidate[], odds: number, chance: number, start: number) => {
     if (items.length === size) {
       if (odds >= floor && (!best || chance > best.chance)) best = { items, odds, chance };
       return;
     }
+    const remaining = size - items.length;
     for (let i = start; i < legs.length; i++) {
       const leg = legs[i];
-      // Legs are sorted by chance, so once one cannot beat the best slip no later one can.
-      if (best && chance * leg.conservative <= best.chance) break;
+      // Legs are sorted by chance, so every later leg is at most this likely: once even this one
+      // repeated cannot beat the best slip, no later combination can.
+      if (best && chance * leg.conservative ** remaining <= best.chance) break;
+      // Nor can any later combination reach the floor once the best remaining prices fall short.
+      if (odds * maxOddsFrom[i] ** remaining < floor) break;
       if (odds * leg.odds > ceiling || items.some((item) => item.fixtureId === leg.fixtureId)) continue;
       visit([...items, leg], odds * leg.odds, chance * leg.conservative, i + 1);
     }
@@ -151,19 +157,27 @@ function bestSlip(legs: Candidate[], size: number, floor: number, ceiling: numbe
 }
 
 /**
- * The day's slip: two games on different matches, each as likely as possible on its own, that
- * together pay at least the target. Every pair of verified bets is compared and the pair with the
- * highest chance that both win is kept.
+ * The day's slip: three or four games on different matches, each as likely as possible on its own,
+ * that together pay at least the target. Every three- and four-game combination of the strongest
+ * verified bets is compared and the one with the highest chance that every game wins is kept.
  */
 export function chooseDay(pool: Candidate[]): Pick[] {
-  const legs = [...pool].sort((a, b) => b.conservative - a.conservative || a.odds - b.odds);
+  const sorted = [...pool].sort((a, b) => b.conservative - a.conservative || a.odds - b.odds);
+  const perMatch = new Map<string, number>();
+  const legs = sorted.filter((leg) => {
+    const used = perMatch.get(leg.fixtureId) ?? 0;
+    perMatch.set(leg.fixtureId, used + 1);
+    return used < POOL_PER_MATCH;
+  });
   if (!legs.length) return [];
   const toPicks = (items: Candidate[]) => items.map(({ score: _score, ...pick }): Pick => ({ ...pick, role: 'main' }));
-  // Strongest games first: the per-game bar is only lowered when no pair clears it at the target
+  // Strongest games first: the per-game bar is only lowered when no slip clears it at the target
   // price, and the price only after that, so the day is never left empty.
-  for (const floor of [TARGET_ODDS, 1.4, 1.3, 1.2]) {
+  for (const floor of [TARGET_ODDS, 1.8, 1.6, 1.5]) {
     for (const minChance of LEG_CHANCE_STEPS) {
-      const slip = bestSlip(legs.filter((leg) => leg.conservative >= minChance), SLIP_LEGS, floor, MAX_SLIP_ODDS);
+      const strong = legs.filter((leg) => leg.conservative >= minChance);
+      const slips = SLIP_SIZES.map((size) => bestSlip(strong, size, floor, MAX_SLIP_ODDS));
+      const slip = slips.reduce<Slip | undefined>((best, item) => (item && (!best || item.chance > best.chance) ? item : best), undefined);
       if (slip) return toPicks(slip.items);
     }
   }
