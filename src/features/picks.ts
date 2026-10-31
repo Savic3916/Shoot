@@ -7,8 +7,6 @@ import { FAMILY_LABEL, familyOf, formatPercent } from './markets';
 export const TARGET_ODDS = 1.5;
 const MAX_SLIP_ODDS = 1.8;
 const MAX_LEGS = 3;
-/** Legs considered when searching combinations (C(45,3) is still under 15,000 slips). */
-const COMBO_POOL = 45;
 /** Lowest chance a bet may have to be offered (the strongest bet inside the band always wins). */
 export const CONFIDENCE_FLOOR = 0.6;
 const SHORTLIST_SIZE = Infinity;
@@ -122,44 +120,45 @@ export function rankCandidates(
   return shortlist;
 }
 
-/**
- * Searches every single bet, pair and triple across different matches and keeps the slip paying at
- * least the target with the highest chance that all of its legs win. Long odds on one match and
- * short odds on several are therefore compared on equal terms instead of assuming a format.
- */
-export function chooseDay(pool: Candidate[]): Pick[] {
-  const legs = [...pool].sort((a, b) => b.conservative - a.conservative).slice(0, COMBO_POOL);
+type Slip = { items: Candidate[]; odds: number; chance: number };
 
-  type Slip = { items: Candidate[]; odds: number; chance: number };
-  const slips: Slip[] = [];
-  const extend = (items: Candidate[], start: number) => {
-    if (items.length) {
-      slips.push({
-        items,
-        odds: items.reduce((product, item) => product * item.odds, 1),
-        chance: items.reduce((product, item) => product * item.conservative, 1),
-      });
-    }
+/**
+ * Highest-chance slip of up to three legs on different matches whose odds land in [floor, ceiling].
+ * Branch and bound over every verified bet: legs are tried strongest first, and a branch stops as
+ * soon as it can no longer beat the best slip found, so the whole pool is searched exactly.
+ */
+function bestSlip(legs: Candidate[], floor: number, ceiling: number): Slip | undefined {
+  let best: Slip | undefined;
+  const visit = (items: Candidate[], odds: number, chance: number, start: number) => {
+    if (items.length && odds >= floor && (!best || chance > best.chance)) best = { items, odds, chance };
     if (items.length === MAX_LEGS) return;
     for (let i = start; i < legs.length; i++) {
-      if (items.some((item) => item.fixtureId === legs[i].fixtureId)) continue;
-      extend([...items, legs[i]], i + 1);
+      const leg = legs[i];
+      // Legs are sorted by chance, so once one cannot beat the best slip no later one can.
+      if (best && chance * leg.conservative <= best.chance) break;
+      if (odds * leg.odds > ceiling || items.some((item) => item.fixtureId === leg.fixtureId)) continue;
+      visit([...items, leg], odds * leg.odds, chance * leg.conservative, i + 1);
     }
   };
-  extend([], 0);
-  if (!slips.length) return [];
+  visit([], 1, 1, 0);
+  return best;
+}
 
-  // Prefer the slip that reaches the target with the best chance; otherwise get as close as the
-  // pool allows, relaxing the price in steps rather than returning nothing.
-  const byChance = (a: Slip, b: Slip) => b.chance - a.chance || a.items.length - b.items.length;
-  for (const floor of [TARGET_ODDS, 1.4, 1.3, 1.2, 0]) {
-    const fits = slips.filter((slip) => slip.odds >= floor && slip.odds <= MAX_SLIP_ODDS).sort(byChance);
-    if (fits.length) {
-      return fits[0].items.map(({ score: _score, ...pick }): Pick => ({ ...pick, role: 'main' }));
-    }
+/**
+ * Compares every single bet, pair and triple across different matches and keeps the slip paying
+ * at least the target with the highest chance that all of its legs win. Long odds on one match and
+ * short odds on several are compared on equal terms instead of assuming a format.
+ */
+export function chooseDay(pool: Candidate[]): Pick[] {
+  const legs = [...pool].sort((a, b) => b.conservative - a.conservative || a.odds - b.odds);
+  if (!legs.length) return [];
+  const toPicks = (items: Candidate[]) => items.map(({ score: _score, ...pick }): Pick => ({ ...pick, role: 'main' }));
+  // If nothing reaches the target, get as close as the pool allows rather than returning nothing.
+  for (const floor of [TARGET_ODDS, 1.4, 1.3, 1.2]) {
+    const slip = bestSlip(legs, floor, MAX_SLIP_ODDS);
+    if (slip) return toPicks(slip.items);
   }
-  const top = [...slips].sort((a, b) => b.odds - a.odds)[0];
-  return top.items.map(({ score: _score, ...pick }): Pick => ({ ...pick, role: 'main' }));
+  return toPicks([legs[0]]);
 }
 
 export function combinedStats(picks: Pick[]) {
