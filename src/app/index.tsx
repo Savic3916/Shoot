@@ -72,10 +72,8 @@ export default function PicksScreen() {
 
   const brief = briefState?.key === requestKey ? briefState.brief : undefined;
   const picks = brief?.picks ?? [];
-  const mainPicks = picks.filter((pick) => pick.role !== 'addon');
-  const addOns = picks.filter((pick) => pick.role === 'addon');
+  const mainPicks = picks;
   const stats = mainPicks.length > 0 ? combinedStats(mainPicks) : undefined;
-  const withAddOn = addOns.length > 0 ? combinedStats(picks) : undefined;
   const track = brief?.track;
 
   return (
@@ -95,9 +93,9 @@ export default function PicksScreen() {
 
         <Text style={styles.title}>{dayOffset === 0 ? 'Today’s bet' : 'Tomorrow’s bet'}</Text>
         <Text style={styles.subtitle}>
-          Every game of the day is checked and the single most likely one paying 1.20 to 1.30 is the main bet.
-          A second game paying 1.10 to 1.15 is offered as an optional add-on. Once set, they never
-          change.
+          Every game of the day is analysed, then every single, pair and triple of bets is compared to
+          find the slip paying 1.50 or more with the best chance of winning. Once set, it never
+          changes.
         </Text>
 
         <View style={styles.tabs}>
@@ -160,27 +158,13 @@ export default function PicksScreen() {
             {stats && (
               <View style={styles.combined}>
                 <View>
-                  <Text style={styles.combinedLabel}>{mainPicks.length === 1 ? 'Main bet' : `Whole slip (${mainPicks.length} picks)`}</Text>
+                  <Text style={styles.combinedLabel}>{mainPicks.length === 1 ? 'Single bet' : `Whole slip (${mainPicks.length} picks)`}</Text>
                   <Text style={styles.combinedSub}>
                     {formatPercent(stats.chance)} chance {mainPicks.length === 1 ? 'it wins' : 'every pick wins'}
                   </Text>
                 </View>
                 <Text style={styles.combinedOdds}>{stats.odds.toFixed(2)}</Text>
               </View>
-            )}
-
-            {withAddOn && stats && (
-              <>
-                <Text style={styles.addOnTitle}>Optional add-on</Text>
-                {addOns.map((pick, index) => (
-                  <PickCard key={pick.fixtureId} pick={pick} index={index} />
-                ))}
-                <Text style={styles.addOnNote}>
-                  Adding it raises the slip from {stats.odds.toFixed(2)} to {withAddOn.odds.toFixed(2)}, but the
-                  chance that everything wins drops from {formatPercent(stats.chance)} to{' '}
-                  {formatPercent(withAddOn.chance)}. Skip it for the safest bet.
-                </Text>
-              </>
             )}
 
             {track && track.picksSettled > 0 && (
@@ -210,8 +194,6 @@ const styles = StyleSheet.create({
   refresh: { paddingVertical: 4 },
   refreshText: { color: PALETTE.primary, fontSize: 14, fontWeight: '600' },
   title: { color: PALETTE.ink, fontSize: 34, fontWeight: '800', letterSpacing: -1, marginTop: 30 },
-  addOnTitle: { color: PALETTE.ink, fontSize: 18, fontWeight: '700', marginBottom: 8, marginTop: 20 },
-  addOnNote: { color: PALETTE.muted, fontSize: 13, lineHeight: 19, marginTop: 4 },
   subtitle: { color: PALETTE.muted, fontSize: 15, lineHeight: 22, marginTop: 8 },
   tabs: { backgroundColor: PALETTE.surface, borderRadius: 12, flexDirection: 'row', marginTop: 22, padding: 3 },
   tab: { alignItems: 'center', borderRadius: 10, flex: 1, paddingVertical: 10 },

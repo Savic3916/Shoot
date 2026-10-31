@@ -31,7 +31,7 @@ import { isEligibleCompetition } from './competitions';
 import { assessMatch, buildTeamHistory, type TeamHistory } from './risk';
 import { loadJson, saveJson } from '@/lib/storage';
 
-const LOCKED_KEY = 'learn:locked-days:v1';
+const LOCKED_KEY = 'learn:locked-days:v2';
 
 export type Brief = {
   analyses: Map<string, MatchAnalysis>;
@@ -107,16 +107,22 @@ async function selectVerifiedPicks(
   signal?: AbortSignal,
   onProgress?: (progress: Progress) => void,
 ): Promise<Pick[]> {
-  // Red-card and fatigue risk are checked before anything else: a match whose risk cannot be
-  // measured, or is high, is never offered however good the numbers look.
+  // Red-card and fatigue risk are measured for every match up front.
   const risks = new Map(data.fixtures.map((fixture) => [fixture.id, assessMatch(fixture, history)]));
   const shortlist = rankCandidates(
     data.date,
     data.fixtures,
     analyses,
     Infinity,
-    (fixture) => risks.get(fixture.id)?.ok === true && isEligibleCompetition(fixture),
-  );
+    isEligibleCompetition,
+  ).map((candidate): Candidate => {
+    // Risk lowers a match's chance instead of removing it, so every match is compared; a match
+    // whose risk cannot be measured is marked down less than one with a known high risk.
+    const risk = risks.get(candidate.fixtureId);
+    const penalty = risk?.ok ? 0 : risk?.failures.some((f) => f.startsWith('Red-card risk cannot')) ? 0.03 : 0.08;
+    const conservative = candidate.conservative - penalty;
+    return { ...candidate, conservative, tier: tierFor(conservative), score: scoreOf(conservative, candidate.edge) };
+  }).filter((candidate) => candidate.conservative >= CONFIDENCE_FLOOR);
   // Every candidate is checked, a few at a time so the free feeds are not flooded.
   const checkOne = async (candidate: Candidate): Promise<Candidate | undefined> => {
     const fixture = data.fixtures.find((item) => item.id === candidate.fixtureId);
