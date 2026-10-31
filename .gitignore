@@ -48,3 +48,6 @@ example
 .copilot/
 .github/copilot-instructions.md
 .github/copilot/
+
+# backtest downloads
+scripts/backtest/.cache/

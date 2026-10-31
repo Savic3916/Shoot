@@ -122,6 +122,40 @@ async function withInsights(
 }
 
 /**
+ * First stage of selection, which needs no downloads: every bet of every well-covered match with
+ * prices is marked down for red-card and fatigue risk and checked against both teams' last ten
+ * results. The backtest runs this same stage on past days.
+ */
+export function screenCandidates(
+  data: { date: string; fixtures: FootballMatch[] },
+  analyses: Map<string, MatchAnalysis>,
+  history: TeamHistory,
+): Candidate[] {
+  const byId = new Map(data.fixtures.map((fixture) => [fixture.id, fixture]));
+  const risks = new Map(data.fixtures.map((fixture) => [fixture.id, assessMatch(fixture, history)]));
+  return rankCandidates(data.date, data.fixtures, analyses, Infinity, isEligibleCompetition).flatMap(
+    (candidate): Candidate[] => {
+      // Risk lowers a match's chance instead of removing it, so every match is compared; a match
+      // whose risk cannot be measured is marked down less than one with a known high risk.
+      const risk = risks.get(candidate.fixtureId);
+      const penalty = risk?.ok ? 0 : risk?.failures.some((f) => f.startsWith('Red-card risk cannot')) ? 0.03 : 0.08;
+      let conservative = candidate.conservative - penalty;
+      // A bet recent results contradict is dropped, one they back is moved toward them.
+      const fixture = byId.get(candidate.fixtureId);
+      const form = fixture ? historySupport(candidate.key, fixture, history) : undefined;
+      const reasons = [...candidate.reasons];
+      if (form && form.games >= MIN_FORM_GAMES) {
+        if (form.support < MIN_FORM_SUPPORT) return [];
+        conservative = (1 - FORM_WEIGHT) * conservative + FORM_WEIGHT * form.support;
+        reasons.push(`Check: this exact bet would have won in ${form.hits} of the last ${form.games} games played by these two teams.`);
+      }
+      if (conservative < CONFIDENCE_FLOOR) return [];
+      return [{ ...candidate, reasons, conservative, tier: tierFor(conservative), score: scoreOf(conservative, candidate.edge) }];
+    },
+  );
+}
+
+/**
  * Shortlists the most probable bets of the day, gathers each team's recent form, head to head and
  * news for every one, and keeps only bets that recent form does not contradict. Odds of the final
  * three therefore rest on two independent views: the model and what actually happened lately.
@@ -133,37 +167,9 @@ async function selectVerifiedPicks(
   signal?: AbortSignal,
   onProgress?: (progress: Progress) => void,
 ): Promise<{ picks: Pick[]; coverage: Coverage }> {
-  // Red-card and fatigue risk are measured for every match up front.
   const byId = new Map(data.fixtures.map((fixture) => [fixture.id, fixture]));
-  const formChecked = new Set<string>();
-  const keyOf = (candidate: Candidate) => `${candidate.fixtureId}:${candidate.key}`;
   const risks = new Map(data.fixtures.map((fixture) => [fixture.id, assessMatch(fixture, history)]));
-  const shortlist = rankCandidates(
-    data.date,
-    data.fixtures,
-    analyses,
-    Infinity,
-    isEligibleCompetition,
-  ).flatMap((candidate): Candidate[] => {
-    // Risk lowers a match's chance instead of removing it, so every match is compared; a match
-    // whose risk cannot be measured is marked down less than one with a known high risk.
-    const risk = risks.get(candidate.fixtureId);
-    const penalty = risk?.ok ? 0 : risk?.failures.some((f) => f.startsWith('Red-card risk cannot')) ? 0.03 : 0.08;
-    let conservative = candidate.conservative - penalty;
-    // Every bet of every match is checked against both teams' last ten results before anything is
-    // downloaded: a bet recent results contradict is dropped, one they back is moved toward them.
-    const fixture = byId.get(candidate.fixtureId);
-    const form = fixture ? historySupport(candidate.key, fixture, history) : undefined;
-    const reasons = [...candidate.reasons];
-    if (form && form.games >= MIN_FORM_GAMES) {
-      if (form.support < MIN_FORM_SUPPORT) return [];
-      conservative = (1 - FORM_WEIGHT) * conservative + FORM_WEIGHT * form.support;
-      formChecked.add(keyOf(candidate));
-      reasons.push(`Check: this exact bet would have won in ${form.hits} of the last ${form.games} games played by these two teams.`);
-    }
-    if (conservative < CONFIDENCE_FLOOR) return [];
-    return [{ ...candidate, reasons, conservative, tier: tierFor(conservative), score: scoreOf(conservative, candidate.edge) }];
-  });
+  const shortlist = screenCandidates(data, analyses, history);
   // Every candidate is checked against team news and, where history was thin, recent form.
   const checkOne = async (candidate: Candidate): Promise<Candidate | undefined> => {
     const fixture = byId.get(candidate.fixtureId);
@@ -199,11 +205,11 @@ async function selectVerifiedPicks(
         `Head to head: this exact bet won in ${meetings.hits} of ${meetings.games} meetings${meetings.since ? ` since ${meetings.since}` : ''}.`,
       );
     }
-    if (formChecked.has(keyOf(candidate))) {
+    const check = candidate.reasons.find((reason) => reason.startsWith('Check:'));
+    if (check) {
       // Already weighed against the longer downloaded history; the five-game check would count
       // the same games twice.
-      const check = candidate.reasons.find((reason) => reason.startsWith('Check:'));
-      if (check) insight.betReasons.splice(Math.max(0, insight.betReasons.length - 1), 0, check);
+      insight.betReasons.splice(Math.max(0, insight.betReasons.length - 1), 0, check);
     } else if (n >= 6) {
       const support = (hits + 1) / (n + 2);
       if (support < 0.55) return undefined; // recent form contradicts the model
