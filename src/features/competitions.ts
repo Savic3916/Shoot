@@ -104,9 +104,29 @@ export function leagueMeta(leagueId: string, fallbackName: string): { name: stri
 const EXCLUDED_COMPETITION =
   /ncaa|college|(^|\s)u-?\d{2}\b|youth|reserve|friendl|\bb team\b|\bii\b|academy|nacional b|primera b|primera c|serie c|serie d|3\. liga|regionalliga|oberliga|primera rfef|segunda rfef|tercera|amateur|national league (north|south)/i;
 
-/** Any professional competition in the world, minus the excluded kinds above. */
-export function isEligibleCompetition(fixture: Pick<FootballMatch, 'competition'>) {
-  return !EXCLUDED_COMPETITION.test(fixture.competition);
+/**
+ * Competitions with deep betting markets and reliable data, where bookmaker prices are sharp and
+ * fixing is rare. Smaller leagues often have no prices in the feed, so their bets rest on the
+ * model's own estimate alone, and SportyBet may not list those markets at all.
+ */
+const TRUSTED_LEAGUES = new Set([
+  'eng.1', 'eng.2', 'eng.3', 'eng.4', 'esp.1', 'esp.2', 'ger.1', 'ger.2', 'ita.1', 'ita.2', 'fra.1', 'fra.2',
+  'ned.1', 'ned.2', 'por.1', 'bel.1', 'sco.1', 'tur.1', 'gre.1', 'aut.1', 'den.1', 'swe.1', 'nor.1',
+  'usa.1', 'mex.1', 'bra.1', 'arg.1', 'jpn.1', 'aus.1', 'ksa.1',
+  'uefa.champions', 'uefa.europa', 'uefa.europa.conf', 'conmebol.libertadores', 'conmebol.sudamericana',
+  'eng.fa', 'eng.league_cup', 'esp.copa_del_rey', 'ger.dfb_pokal', 'ita.coppa_italia', 'fra.coupe_de_france',
+  'fifa.world', 'fifa.worldq.uefa', 'uefa.euro', 'uefa.euroq', 'uefa.nations',
+]);
+
+/** A well-covered competition (prices may not be published yet). */
+export function isTrustedCompetition(fixture: Pick<FootballMatch, 'competition' | 'leagueId'>) {
+  const slug = LEAGUES[fixture.leagueId]?.[2];
+  return slug !== undefined && TRUSTED_LEAGUES.has(slug) && !EXCLUDED_COMPETITION.test(fixture.competition);
+}
+
+/** A well-covered competition whose match has bookmaker prices to anchor every market. */
+export function isEligibleCompetition(fixture: Pick<FootballMatch, 'competition' | 'leagueId' | 'market'>) {
+  return isTrustedCompetition(fixture) && fixture.market?.moneyline !== undefined;
 }
 
 export function countryOf(competition: string): string {

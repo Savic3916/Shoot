@@ -28,7 +28,7 @@ import {
   type Pick,
 } from './picks';
 import { fitRatings, type Ratings } from './ratings';
-import { isEligibleCompetition } from './competitions';
+import { isEligibleCompetition, isTrustedCompetition } from './competitions';
 import { meetingSupport } from './h2h';
 import { assessMatch, buildTeamHistory, historySupport, type TeamHistory } from './risk';
 import { loadJson, saveJson } from '@/lib/storage';
@@ -254,7 +254,8 @@ async function selectVerifiedPicks(
     data.fixtures,
     analyses,
     Infinity,
-    undefined,
+    // Still the trusted leagues only, but their prices may not be out yet.
+    isTrustedCompetition,
     0.4,
     0,
   ).map((candidate): Candidate => {
